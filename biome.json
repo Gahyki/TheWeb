@@ -1,0 +1,23 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "files": {
+    "includes": [
+      "src/**",
+      "api/**",
+      "server/**",
+      "tests/**",
+      "ui-tests/**",
+      "playwright.config.ts",
+      "vite.config.ts"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "noImportantStyles": "off"
+      }
+    }
+  }
+}

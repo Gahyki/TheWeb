@@ -1,0 +1,39 @@
+name: Dependabot auto-merge
+
+# Merges dependabot PRs only AFTER the CI workflow has completed
+# successfully, so there is no merge-before-green race and no need for
+# branch protection or the repo-level auto-merge setting (unavailable on
+# free private repos). Scoped to low-risk groups: the minor-and-patch npm
+# group and grouped GitHub Actions bumps. Majors still wait for review.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      (contains(github.event.workflow_run.head_branch, 'minor-and-patch') ||
+       startsWith(github.event.workflow_run.head_branch, 'dependabot/github_actions/'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge the dependabot PR for this branch
+        # The author gate matters once the repo is public: a fork PR can
+        # spoof a dependabot-like branch name, but not the login.
+        run: |
+          author=$(gh pr view "$BRANCH" --repo "$REPO" --json author --jq .author.login)
+          if [ "$author" != "app/dependabot" ] && [ "$author" != "dependabot[bot]" ]; then
+            echo "PR author is '$author', not dependabot — skipping."
+            exit 0
+          fi
+          gh pr merge --squash --repo "$REPO" "$BRANCH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}

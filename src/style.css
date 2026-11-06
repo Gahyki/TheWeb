@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: Inter, "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
+
+::selection {
+  background: rgba(191, 234, 255, 0.25);
+  color: #fff;
+}
+
+/* Hairline scrollbars inside section panels (Firefox). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Hairline scrollbars inside section panels (WebKit/Chromium). */
+*::-webkit-scrollbar {
+  width: 4px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

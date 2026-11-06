@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: theweb-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: "0.0.0.0"
+      - key: APP_ORIGIN
+        sync: false
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: CONTACT_RATE_LIMIT
+        value: "5"
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: CONTACT_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: PROFILE_BIRTH_YEAR
+        sync: false
+      - key: PROFILE_BIRTH_MONTH
+        sync: false
+      - key: PROFILE_TIME_ZONE
+        value: America/Vancouver
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: CONTACT_FROM
+        sync: false
+      - key: CONTACT_TO
+        sync: false

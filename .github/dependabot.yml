@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Majors for lockstep ecosystems must land in ONE PR — separate
+      # vite/plugin-react PRs deadlock on each other's peer ranges.
+      vite-major:
+        patterns: ["vite", "@vitejs/*", "@tailwindcss/vite"]
+        update-types: [major]
+      react-major:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+        update-types: [major]
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One PR + one CI run instead of one per action bump.
+      actions:
+        patterns: ["*"]

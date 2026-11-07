@@ -72,7 +72,7 @@ function useKeyboardNavigation() {
       const target = event.target instanceof Element ? event.target : null;
       // Never steal keys from inside a form (Escape must not nuke a
       // half-written contact message, even from the Send button).
-      if (target?.closest("form")) {
+      if (target?.closest("form") || target?.closest("[data-sheet]")) {
         return;
       }
       const tag = target?.tagName ?? "";

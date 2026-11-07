@@ -505,7 +505,11 @@ export function CameraDirector() {
       vectors.up.setFromMatrixColumn(camera.matrix, 1);
       vectors.look.copy(vectors.center);
       if (store.isMobile) {
-        vectors.look.addScaledVector(vectors.up, -composeDistance * 0.17 * proxy.off);
+        // Phone reels overlay the caption on the lower half, so the body
+        // sits at ~30% of the screen height: offset k gives a vertical
+        // angle atan(k / 2.1) (fitDistance is 2.1x on mobile) against the
+        // 25° half-FOV — k = 0.38 puts the center 20% above mid-screen.
+        vectors.look.addScaledVector(vectors.up, -composeDistance * 0.38 * proxy.off);
       } else {
         vectors.look.addScaledVector(vectors.right, composeDistance * 0.21 * proxy.off);
       }

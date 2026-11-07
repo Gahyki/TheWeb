@@ -20,6 +20,12 @@ const noRaycast = () => null;
 /** The sun's brightness from any focused view — its own knob, tuned by eye. */
 const SUN_RECEDE = 0.45;
 
+/** How far bystanders (other bodies, orbit rings) recede on focus. */
+export const BYSTANDER_DIM = 0.45;
+
+/** Rate (1/s) at which focus dimming eases in and out. */
+export const DIM_EASE_RATE = 3.5;
+
 function Moon({ moon, reveals, density }: { moon: MoonDef; reveals: BodyReveals; density: number }) {
   const orbitRef = useRef<Group>(null);
   const moonRef = useRef<Group>(null);
@@ -244,11 +250,11 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
         const distance = Math.max(camera.position.distanceTo(group.position), 0.001);
         const ratio = def.radius / distance;
         const t = MathUtils.clamp((ratio - 0.05) / 0.08, 0, 1);
-        fade = 0.45 * (1 - t * t * (3 - 2 * t));
+        fade = BYSTANDER_DIM * (1 - t * t * (3 - 2 * t));
       }
     }
     // Ease toward the target so focus changes never pop brightness.
-    fadeSmooth.current = MathUtils.lerp(fadeSmooth.current, fade, Math.min(1, delta * 3.5));
+    fadeSmooth.current = MathUtils.lerp(fadeSmooth.current, fade, Math.min(1, delta * DIM_EASE_RATE));
     // A dissolved bystander still rasterizes a near-fullscreen wireframe at
     // alpha ~0; skip its draw calls entirely below the perception floor.
     if (group) {

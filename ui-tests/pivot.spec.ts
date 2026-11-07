@@ -125,10 +125,21 @@ test("a scroll-driven settle comes to rest without residual drift", async ({ pag
     root.scrollTop = section.offsetTop;
   });
 
-  // Scroll settles keep an intentional glide (snapping back from mid-gap
-  // can leave ~a radian to cover; exponential, ~99.97% done by 2s). After
-  // that window the camera must hold still.
-  await page.waitForTimeout(2_000);
+  // Scroll settles keep an intentional glide. It advances per rendered
+  // frame with a clamped step, so on a loaded machine it needs more wall
+  // time — wait for the camera to actually come to rest (two reads 300ms
+  // apart agree) instead of a fixed window. A camera that never rests
+  // fails via the timeout; one that rests and then pivots fails below.
+  await expect
+    .poll(
+      async () => {
+        const first = await readAzimuth(page);
+        await page.waitForTimeout(300);
+        return Math.abs(wrappedDelta(first, await readAzimuth(page)));
+      },
+      { timeout: 15_000, intervals: [0] },
+    )
+    .toBeLessThan(0.001);
   const settled = await readAzimuth(page);
   await page.waitForTimeout(1_200);
   const later = await readAzimuth(page);

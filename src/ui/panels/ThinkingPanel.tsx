@@ -1,3 +1,4 @@
+import { thinking } from "../../data/siteContent";
 import { Eyebrow, Reveal } from "../Reveal";
 
 export function ThinkingPanel() {
@@ -7,30 +8,21 @@ export function ThinkingPanel() {
         <Eyebrow>How I Think</Eyebrow>
       </Reveal>
       <Reveal i={1}>
-        <h2 className="text-3xl font-extralight tracking-wide text-white">A point of view</h2>
+        <h2 className="text-3xl font-extralight tracking-wide text-white">{thinking.title}</h2>
       </Reveal>
-      <Reveal i={2}>
-        <p className="max-w-md text-sm font-light leading-relaxed text-white/70">
-          I’m interested in how systems fit together, and in the ideas that make useful software
-          simpler and more dependable.
-        </p>
-      </Reveal>
-      <Reveal i={3}>
-        <p className="max-w-md text-sm font-light leading-relaxed text-white/50">
-          My career and studies have taken me from Montreal to Vancouver. I speak English, French,
-          and Korean.
-        </p>
-      </Reveal>
-      <Reveal i={4}>
-        <p className="max-w-md text-sm font-light leading-relaxed text-white/50">
-          Outside of work, I enjoy exploring open-source software and interesting technology. This
-          site is a simple place to share a little about me.
-        </p>
-      </Reveal>
+      {thinking.paragraphs.map((paragraph, index) => (
+        <Reveal i={2 + index} key={paragraph}>
+          <p
+            className={`max-w-md text-sm font-light leading-relaxed ${
+              index === 0 ? "text-white/70" : "text-white/50"
+            }`}
+          >
+            {paragraph}
+          </p>
+        </Reveal>
+      ))}
       <Reveal i={5}>
-        <p className="text-xs font-light tracking-wide text-white/40">
-          A practice of asking better questions.
-        </p>
+        <p className="text-xs font-light tracking-wide text-white/40">{thinking.closing}</p>
       </Reveal>
     </div>
   );

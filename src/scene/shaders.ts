@@ -91,7 +91,8 @@ export function makeTrailMaterial(color: string, reveal: RevealRef): ShaderMater
   return new ShaderMaterial({
     uniforms: {
       uColor: { value: new Color(color) },
-      uBase: { value: 0.14 },
+      // Matches the planet orbit rings as seen in a focused view.
+      uBase: { value: 0.3 },
       uGlow: { value: 0.9 },
       uMoonAngle: { value: 0 },
       uReveal: reveal,

@@ -5,10 +5,15 @@ import { Eyebrow, Reveal } from "../Reveal";
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const DEFAULT_ERROR = "The contact form is unavailable right now. Please try again later.";
 
-const fieldClasses =
-  "w-full border border-white/15 bg-transparent px-3 py-2 text-sm font-light text-white placeholder-white/30 transition-colors focus:border-white/50 focus:outline-none";
+const FIELD_BASE =
+  "w-full border border-white/15 bg-transparent font-light text-white placeholder-white/30 transition-colors focus:border-white/50 focus:outline-none";
 
-export function ContactPanel() {
+/**
+ * Large is the touch variant: 16px text (iOS Safari zooms into anything
+ * smaller on focus), 48px+ fields and a full-width submit, and real
+ * autocomplete hints so phones can fill name and email.
+ */
+export function ContactForm({ large = false }: { large?: boolean }) {
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState(DEFAULT_ERROR);
   const [emailInvalid, setEmailInvalid] = useState(false);
@@ -63,6 +68,82 @@ export function ContactPanel() {
     }
   }
 
+  const fieldClasses = `${FIELD_BASE} ${large ? "px-4 py-3 text-base" : "px-3 py-2 text-sm"}`;
+  const labelClasses = `flex flex-col uppercase text-white/50 ${
+    large ? "gap-2 text-xs tracking-[0.25em]" : "gap-1 text-[10px] tracking-[0.3em]"
+  }`;
+
+  return (
+    <form
+      className={`flex flex-col ${large ? "gap-4" : "gap-3"}`}
+      autoComplete="off"
+      onSubmit={submitContactForm}
+    >
+      <label className={labelClasses}>
+        Name
+        <input
+          name="name"
+          autoComplete={large ? "name" : "off"}
+          maxLength={100}
+          required
+          className={fieldClasses}
+        />
+      </label>
+      <label className={labelClasses}>
+        Email
+        <input
+          ref={emailInputRef}
+          name="email"
+          type="text"
+          inputMode="email"
+          autoComplete={large ? "email" : "off"}
+          maxLength={254}
+          required
+          aria-invalid={emailInvalid || undefined}
+          className={fieldClasses}
+        />
+      </label>
+      <label className={labelClasses}>
+        Message
+        <textarea
+          name="message"
+          autoComplete="off"
+          rows={4}
+          minLength={10}
+          maxLength={5000}
+          required
+          className={fieldClasses}
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={status === "sending"}
+        className={`rounded-full border border-white/20 uppercase text-white/80 transition hover:border-white/50 hover:text-white disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60 ${
+          large
+            ? "h-12 w-full text-xs tracking-[0.3em]"
+            : "self-start px-6 py-2 text-[10px] tracking-[0.3em]"
+        }`}
+      >
+        {status === "sending" ? "Sending…" : "Send message"}
+      </button>
+      {/* Persistent live region: toggling text (not the element) so screen readers announce it. */}
+      <p
+        className={`${large ? "text-sm" : "text-xs"} font-light text-cyan-100/80`}
+        role="status"
+        aria-live="polite"
+      >
+        {status === "success" ? "Thanks, your message was sent." : null}
+      </p>
+      {status === "error" && (
+        <p className={`${large ? "text-sm" : "text-xs"} font-light text-red-200/80`} role="alert">
+          {errorMessage}
+        </p>
+      )}
+    </form>
+  );
+}
+
+export function ContactPanel() {
   return (
     <div className="flex h-full flex-col justify-center gap-5">
       <Reveal i={0}>
@@ -80,54 +161,7 @@ export function ContactPanel() {
         </p>
       </Reveal>
       <Reveal i={3}>
-        <form className="flex flex-col gap-3" autoComplete="off" onSubmit={submitContactForm}>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.3em] text-white/50">
-            Name
-            <input name="name" autoComplete="off" maxLength={100} required className={fieldClasses} />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.3em] text-white/50">
-            Email
-            <input
-              ref={emailInputRef}
-              name="email"
-              type="text"
-              inputMode="email"
-              autoComplete="off"
-              maxLength={254}
-              required
-              aria-invalid={emailInvalid || undefined}
-              className={fieldClasses}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.3em] text-white/50">
-            Message
-            <textarea
-              name="message"
-              autoComplete="off"
-              rows={4}
-              minLength={10}
-              maxLength={5000}
-              required
-              className={fieldClasses}
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={status === "sending"}
-            className="self-start rounded-full border border-white/20 px-6 py-2 text-[10px] uppercase tracking-[0.3em] text-white/80 transition hover:border-white/50 hover:text-white disabled:opacity-40 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
-          >
-            {status === "sending" ? "Sending…" : "Send message"}
-          </button>
-          {/* Persistent live region: toggling text (not the element) so screen readers announce it. */}
-          <p className="text-xs font-light text-cyan-100/80" role="status" aria-live="polite">
-            {status === "success" ? "Thanks, your message was sent." : null}
-          </p>
-          {status === "error" && (
-            <p className="text-xs font-light text-red-200/80" role="alert">
-              {errorMessage}
-            </p>
-          )}
-        </form>
+        <ContactForm />
       </Reveal>
       <Reveal i={4}>
         <p className="text-xs font-light text-white/40">

@@ -31,3 +31,13 @@ export const experience = [
     dates: "2018 — 2022",
   },
 ];
+
+export const thinking = {
+  title: "A point of view",
+  paragraphs: [
+    "I’m interested in how systems fit together, and in the ideas that make useful software simpler and more dependable.",
+    "My career and studies have taken me from Montreal to Vancouver. I speak English, French, and Korean.",
+    "Outside of work, I enjoy exploring open-source software and interesting technology. This site is a simple place to share a little about me.",
+  ],
+  closing: "A practice of asking better questions.",
+};

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ContributionCalendar, GithubSnapshot } from "../github";
-import { FALLBACK_REPOS, fetchGithubSnapshot } from "../github";
+import { useMemo } from "react";
+import { useGithubSnapshot } from "../../hooks/useGithubSnapshot";
+import type { ContributionCalendar } from "../github";
+import { FALLBACK_REPOS } from "../github";
 import { Eyebrow, Reveal } from "../Reveal";
 
 const WEEKS_SHOWN = 26;
@@ -60,20 +61,7 @@ function DotGrid({ contributions }: { contributions: ContributionCalendar | null
 }
 
 export function GithubPanel() {
-  const [snapshot, setSnapshot] = useState<GithubSnapshot | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchGithubSnapshot(controller.signal)
-      .then(setSnapshot)
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setFailed(true);
-        }
-      });
-    return () => controller.abort();
-  }, []);
+  const { snapshot, failed } = useGithubSnapshot();
 
   const repos = (snapshot && snapshot.repos.length > 0 ? snapshot.repos : FALLBACK_REPOS).slice(
     0,

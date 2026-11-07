@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ComponentType } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { BODY_MAP, BODY_ORDER } from "../scene/config";
 import { scrollPose } from "../scene/scrollBridge";
 import type { BodyId } from "../state/store";
@@ -7,6 +7,9 @@ import { ContactPanel } from "./panels/ContactPanel";
 import { ExperiencePanel } from "./panels/ExperiencePanel";
 import { GithubPanel } from "./panels/GithubPanel";
 import { HomePanel } from "./panels/HomePanel";
+import { TAB_BAR_PX } from "./mobile/MobileChrome";
+import { MobileOverlay, SHEET_TITLES, SheetContent } from "./mobile/MobileSections";
+import { Sheet } from "./mobile/Sheet";
 import { ThinkingPanel } from "./panels/ThinkingPanel";
 
 const PANELS: Record<BodyId, ComponentType> = {
@@ -40,6 +43,9 @@ export function SectionPanel() {
   const focused = useSiteStore((state) => state.focused);
   const uiVisible = useSiteStore((state) => state.uiVisible);
   const degraded = useSiteStore((state) => state.degraded);
+  const isMobile = useSiteStore((state) => state.isMobile);
+  /** Phone reels: the section whose "more" sheet is open, if any. */
+  const [sheet, setSheet] = useState<BodyId | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
@@ -182,6 +188,14 @@ export function SectionPanel() {
     });
   }, []);
 
+  useEffect(() => {
+    return useSiteStore.subscribe((state, previous) => {
+      if (state.view !== previous.view) {
+        setSheet(null);
+      }
+    });
+  }, []);
+
   // Tab clicks and keyboard navigation smooth-scroll to their section.
   useEffect(() => {
     return useSiteStore.subscribe((state, previous) => {
@@ -207,6 +221,57 @@ export function SectionPanel() {
 
   if (!mounted) {
     return null;
+  }
+
+  if (isMobile) {
+    // Reels: one full-screen page per section, the planet animation behind
+    // and the section's caption overlaid at the bottom above the tab bar.
+    // Each swipe settles on exactly one page (snap-always). While a sheet
+    // is open the reels are locked so its scrolling never pages them.
+    return (
+      <>
+        <div
+          ref={containerRef}
+          data-scroll-root
+          onScroll={syncPose}
+          className={`fixed inset-0 z-20 snap-y snap-mandatory overscroll-none transition-opacity duration-500 ${
+            sheet ? "overflow-hidden" : "overflow-y-auto"
+          } ${uiVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        >
+          {BODY_ORDER.map((id, index) => (
+            <section
+              key={id}
+              ref={(element) => {
+                sectionRefs.current[index] = element;
+              }}
+              data-section={id}
+              aria-label={BODY_MAP[id].sectionLabel}
+              className="relative h-[100dvh] snap-start snap-always"
+            >
+              <div
+                className="absolute inset-x-0 bottom-0 px-5 pt-20"
+                style={{
+                  paddingBottom: `calc(${TAB_BAR_PX}px + env(safe-area-inset-bottom) + 20px)`,
+                  // Scrim: keeps text legible over bright wireframes while
+                  // leaving the planet above it untouched.
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.78) 55%, rgba(0,0,0,0) 100%)",
+                }}
+              >
+                <div className="mx-auto max-w-xl">
+                  <MobileOverlay id={id} onMore={() => setSheet(id)} />
+                </div>
+              </div>
+            </section>
+          ))}
+        </div>
+        {BODY_ORDER.filter((id) => SHEET_TITLES[id]).map((id) => (
+          <Sheet key={id} title={SHEET_TITLES[id] ?? ""} open={sheet === id} onClose={() => setSheet(null)}>
+            <SheetContent id={id} />
+          </Sheet>
+        ))}
+      </>
+    );
   }
 
   return (

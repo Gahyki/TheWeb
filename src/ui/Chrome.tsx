@@ -1,8 +1,14 @@
 import { BODY_MAP, BODY_ORDER } from "../scene/config";
 import { useSiteStore } from "../state/store";
+import { MobileChrome } from "./mobile/MobileChrome";
 
 /** Persistent minimal chrome: wordmark, section nav, back affordance. */
 export function Chrome() {
+  const isMobile = useSiteStore((state) => state.isMobile);
+  return isMobile ? <MobileChrome /> : <DesktopChrome />;
+}
+
+function DesktopChrome() {
   const view = useSiteStore((state) => state.view);
   const navigate = useSiteStore((state) => state.navigate);
   const showBack = view !== "overview";

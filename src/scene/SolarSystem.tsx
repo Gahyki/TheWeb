@@ -1,8 +1,9 @@
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { MathUtils } from "three";
 import { useSiteStore } from "../state/store";
-import { Body } from "./Body";
+import { Body, BYSTANDER_DIM, DIM_EASE_RATE } from "./Body";
 import { BODIES } from "./config";
 import { circleGeometry } from "./geometry";
 import { DETERMINISTIC, sim, SIM_RAMP_RATE, uTime } from "./registry";
@@ -14,13 +15,21 @@ import { Stars } from "./Stars";
 const noRaycast = () => null;
 
 function OrbitPaths({ density }: { density: number }) {
+  /** Shared brightness: full in the overview, receding like the
+   * background planets while a section is focused. */
+  const boost = useRef({ value: 1 }).current;
   const orbits = useMemo(() => {
     return BODIES.filter((def) => def.orbitRadius > 0).map((def) => ({
       id: def.id,
       geometry: circleGeometry(def.orbitRadius, Math.round(220 * density)),
-      material: makeLineMaterial({ color: "#cfeaff", opacity: 0.18, breath: 0.14 }),
+      material: makeLineMaterial({ color: "#cfeaff", opacity: 0.7, breath: 0.14, boost }),
     }));
-  }, [density]);
+  }, [density, boost]);
+
+  useFrame((_, delta) => {
+    const target = useSiteStore.getState().view === "overview" ? 1 : BYSTANDER_DIM;
+    boost.value = MathUtils.lerp(boost.value, target, Math.min(1, delta * DIM_EASE_RATE));
+  });
 
   useEffect(() => {
     return () => {

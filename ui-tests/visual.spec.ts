@@ -62,3 +62,28 @@ test("a focused section matches its baseline", async ({ page }) => {
   await page.waitForTimeout(500);
   await expect(page).toHaveScreenshot("focused-saturn.png", SHOT);
 });
+
+test.describe("phone reels", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("the Home reel matches its baseline", async ({ page }) => {
+    await page.goto("/?det=1");
+    await waitSettled(page);
+    await page.waitForFunction(
+      () => ((window as unknown as { __label?: Label }).__label?.opacity ?? 0) > 0.84,
+      undefined,
+      { timeout: 30_000 },
+    );
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot("phone-home.png", SHOT);
+  });
+
+  test("the Experience sheet matches its baseline", async ({ page }) => {
+    await page.goto("/experience?det=1");
+    await waitSettled(page);
+    await page.locator('[data-section="saturn"]').getByRole("button", { name: /all 4 entries/i }).click();
+    await expect(page.getByRole("dialog", { name: "Experience" })).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect(page).toHaveScreenshot("phone-experience-sheet.png", SHOT);
+  });
+});

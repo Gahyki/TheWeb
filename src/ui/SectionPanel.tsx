@@ -30,6 +30,9 @@ const SLOT_CLASS = "h-[150vh]";
 const LAST_SLOT_CLASS = "h-screen";
 const SPACER_CLASS = "mt-[10vh]";
 
+/** Below this the outgoing content is imperceptible. */
+const HIDDEN_OPACITY = 0.02;
+
 /**
  * One continuous page: all sections stacked in a single native scroller,
  * separated by empty transition zones. Scroll position drives the camera
@@ -44,6 +47,10 @@ export function SectionPanel() {
   const uiVisible = useSiteStore((state) => state.uiVisible);
   const degraded = useSiteStore((state) => state.degraded);
   const isMobile = useSiteStore((state) => state.isMobile);
+  const reducedMotion = useSiteStore((state) => state.reducedMotion);
+  // Reduced motion swaps content instantly, like Reveal does; a lingering
+  // fade there raced its own short flights (content returned mid-fade).
+  const fade = reducedMotion ? "" : "transition-opacity duration-500";
   /** Phone reels: the section whose "more" sheet is open, if any. */
   const [sheet, setSheet] = useState<BodyId | null>(null);
 
@@ -196,27 +203,58 @@ export function SectionPanel() {
     });
   }, []);
 
-  // Tab clicks and keyboard navigation smooth-scroll to their section.
+  // Tab clicks and keyboard navigation jump to their section — but only
+  // once the outgoing content is invisible. Jumping immediately put the
+  // *next* page inside the still-fading container, flashing it before the
+  // flight. The wait watches the container's real opacity each frame
+  // rather than a timer: on a busy main thread the fade's start (a React
+  // commit) lands late, and a fixed delay would fire mid-fade. It also
+  // jumps as soon as the content is about to reappear (short reduced-
+  // motion flights). Degraded mode never hides content, so it swaps now.
   useEffect(() => {
-    return useSiteStore.subscribe((state, previous) => {
+    let pending: number | null = null;
+    let frame = 0;
+    const jump = () => {
+      cancelAnimationFrame(frame);
+      const container = containerRef.current;
+      if (pending !== null && container) {
+        programmaticTarget.current = pending;
+        container.scrollTo({ top: pending, behavior: "auto" });
+      }
+      pending = null;
+    };
+    const jumpWhenHidden = () => {
+      const container = containerRef.current;
+      if (!container || Number(getComputedStyle(container).opacity) <= HIDDEN_OPACITY) {
+        jump();
+        return;
+      }
+      frame = requestAnimationFrame(jumpWhenHidden);
+    };
+    const unsubscribe = useSiteStore.subscribe((state, previous) => {
+      if (pending !== null && state.uiVisible && !previous.uiVisible) {
+        jump();
+      }
       if (
         state.view === previous.view ||
         state.view === "overview" ||
-        state.viewSource === "scroll"
+        state.viewSource === "scroll" ||
+        !containerRef.current
       ) {
         return;
       }
-      const container = containerRef.current;
-      if (!container) {
+      pending = sectionRefs.current[BODY_ORDER.indexOf(state.view)]?.offsetTop ?? 0;
+      if (state.uiVisible) {
+        jump();
         return;
       }
-      // Jump, don't animate: the camera flies planet to planet directly
-      // while the content is dissolved, so scrolling through the
-      // in-between sections would only drag the scrub through them.
-      const target = sectionRefs.current[BODY_ORDER.indexOf(state.view)]?.offsetTop ?? 0;
-      programmaticTarget.current = target;
-      container.scrollTo({ top: target, behavior: "auto" });
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(jumpWhenHidden);
     });
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   if (!mounted) {
@@ -234,7 +272,7 @@ export function SectionPanel() {
           ref={containerRef}
           data-scroll-root
           onScroll={syncPose}
-          className={`fixed inset-0 z-20 snap-y snap-mandatory overscroll-none transition-opacity duration-500 ${
+          className={`fixed inset-0 z-20 snap-y snap-mandatory overscroll-none ${fade} ${
             sheet ? "overflow-hidden" : "overflow-y-auto"
           } ${uiVisible ? "opacity-100" : "pointer-events-none opacity-0"}`}
         >
@@ -279,7 +317,7 @@ export function SectionPanel() {
       ref={containerRef}
       data-scroll-root
       onScroll={syncPose}
-      className={`fixed inset-0 z-20 snap-y snap-mandatory overflow-y-auto transition-opacity duration-500 sm:snap-none ${
+      className={`fixed inset-0 z-20 snap-y snap-mandatory overflow-y-auto ${fade} sm:snap-none ${
         uiVisible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
     >

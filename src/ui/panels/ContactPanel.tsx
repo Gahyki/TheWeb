@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { publicContactEmail } from "../../data/contact";
 import { Eyebrow, Reveal } from "../Reveal";
 
@@ -16,14 +16,13 @@ const FIELD_BASE =
 export function ContactForm({ large = false }: { large?: boolean }) {
   const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState(DEFAULT_ERROR);
-  const [emailInvalid, setEmailInvalid] = useState(false);
-  const emailInputRef = useRef<HTMLInputElement>(null);
+  const [invalidField, setInvalidField] = useState<"name" | "email" | "message" | null>(null);
 
   async function submitContactForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("sending");
     setErrorMessage(DEFAULT_ERROR);
-    setEmailInvalid(false);
+    setInvalidField(null);
 
     const form = event.currentTarget;
     const values = new FormData(form);
@@ -52,9 +51,13 @@ export function ContactForm({ large = false }: { large?: boolean }) {
           if ("error" in responseBody && typeof responseBody.error === "string") {
             setErrorMessage(responseBody.error);
           }
-          if ("field" in responseBody && responseBody.field === "email") {
-            setEmailInvalid(true);
-            emailInputRef.current?.focus();
+          const field = "field" in responseBody ? responseBody.field : null;
+          if (field === "name" || field === "email" || field === "message") {
+            setInvalidField(field);
+            const input = form.elements.namedItem(field);
+            if (input instanceof HTMLElement) {
+              input.focus();
+            }
           }
         }
         setStatus("error");
@@ -86,20 +89,20 @@ export function ContactForm({ large = false }: { large?: boolean }) {
           autoComplete={large ? "name" : "off"}
           maxLength={100}
           required
+          aria-invalid={invalidField === "name" || undefined}
           className={fieldClasses}
         />
       </label>
       <label className={labelClasses}>
         Email
         <input
-          ref={emailInputRef}
           name="email"
           type="text"
           inputMode="email"
           autoComplete={large ? "email" : "off"}
           maxLength={254}
           required
-          aria-invalid={emailInvalid || undefined}
+          aria-invalid={invalidField === "email" || undefined}
           className={fieldClasses}
         />
       </label>
@@ -112,6 +115,7 @@ export function ContactForm({ large = false }: { large?: boolean }) {
           minLength={10}
           maxLength={5000}
           required
+          aria-invalid={invalidField === "message" || undefined}
           className={fieldClasses}
         />
       </label>

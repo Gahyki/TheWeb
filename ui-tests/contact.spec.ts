@@ -56,6 +56,45 @@ test.describe("contact form submission", () => {
     await expect(email).toBeFocused();
   });
 
+  test("a non-ASCII message error marks and focuses the message field", async ({ page }) => {
+    const error = "Messages can only use English letters, numbers, and basic punctuation.";
+    await page.route("**/api/contact", (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error, field: "message" }),
+      }),
+    );
+    await fillContactForm(page);
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(error);
+    const messageField = page.locator('textarea[name="message"]');
+    await expect(messageField).toHaveValue(MESSAGE);
+    await expect(messageField).toHaveAttribute("aria-invalid", "true");
+    await expect(messageField).toBeFocused();
+    await expect(page.locator('input[name="email"]')).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  test("a name format error marks and focuses the name field", async ({ page }) => {
+    const error = "Names can only use letters (accents are fine), numbers, and basic punctuation.";
+    await page.route("**/api/contact", (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error, field: "name" }),
+      }),
+    );
+    await fillContactForm(page);
+    await page.getByRole("button", { name: "Send message" }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(error);
+    const nameField = page.locator('input[name="name"]');
+    await expect(nameField).toHaveAttribute("aria-invalid", "true");
+    await expect(nameField).toBeFocused();
+    await expect(page.locator('textarea[name="message"]')).toHaveValue(MESSAGE);
+  });
+
   test("an unconfigured delivery backend surfaces the server error", async ({ page }) => {
     await page.route("**/api/contact", (route) =>
       route.fulfill({

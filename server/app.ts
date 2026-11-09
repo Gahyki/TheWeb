@@ -1,12 +1,12 @@
 import express, { type ErrorRequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { z } from "zod";
 import {
   getSmtpConfig,
   sendContactMessage,
   type ContactMessage,
 } from "./contact.js";
+import { parseContact } from "./contactInput.js";
 import { createGithubService } from "./getGithubApi.js";
 import { getProfileAge, parseProfileBirthMonth } from "./profileAge.js";
 
@@ -16,8 +16,6 @@ type AppOptions = {
   contactRateLimit?: number;
   githubFetch?: typeof fetch;
 };
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function parseInteger(
   value: string | undefined,
@@ -36,17 +34,6 @@ function parseInteger(
 
   return parsed;
 }
-
-const contactSchema = z
-  .object({
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject ASCII control characters in submitted names.
-    name: z.string().trim().min(1).max(100).regex(/^[^\u0000-\u001f\u007f]+$/),
-    email: z.string().trim().regex(emailPattern).max(254),
-    // Only tab and LF are allowed; CR is rejected because CRLF.CRLF ends SMTP DATA.
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters that could affect downstream message handling.
-    message: z.string().trim().min(10).max(5000).regex(/^[^\u0000-\u0008\u000b-\u001f\u007f]+$/),
-  })
-  .strict();
 
 export function createApp(options: AppOptions = {}) {
   const env = options.env ?? process.env;
@@ -153,20 +140,9 @@ export function createApp(options: AppOptions = {}) {
     },
     contactRateLimiter,
     async (request, response) => {
-      const parsed = contactSchema.safeParse(request.body);
-      if (!parsed.success) {
-        const hasInvalidEmail = parsed.error.issues.some(
-          (issue) => issue.path[0] === "email" && issue.code === "invalid_format",
-        );
-        if (hasInvalidEmail) {
-          response.status(400).json({
-            error: "Please enter a valid email address.",
-            field: "email",
-          });
-          return;
-        }
-
-        response.status(400).json({ error: "Please check the contact form fields." });
+      const parsed = parseContact(request.body);
+      if ("error" in parsed) {
+        response.status(400).json(parsed.error);
         return;
       }
 

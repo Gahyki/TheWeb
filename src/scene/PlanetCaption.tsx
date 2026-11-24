@@ -4,8 +4,8 @@ import {
   CanvasTexture,
   MathUtils,
   PerspectiveCamera,
-  Sprite,
-  SpriteMaterial,
+  type Sprite,
+  type SpriteMaterial,
   Vector3,
 } from "three";
 import type { BodyId } from "../state/store";

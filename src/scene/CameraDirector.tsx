@@ -4,77 +4,19 @@ import { useEffect, useRef } from "react";
 import { MathUtils, Vector3 } from "three";
 import type { BodyId } from "../state/store";
 import { useSiteStore } from "../state/store";
-import { BODY_MAP, FOCUS_ELEVATION, OVERVIEW_CAMERA } from "./config";
-import { computeBodyPosition, revealOf, sim, SIM_RAMP_RATE } from "./registry";
+import {
+  fitDistance,
+  focusElevationOf,
+  landingAzimuth,
+  outwardAzimuth,
+  shortestDelta,
+} from "./cameraMath";
+import { BODY_MAP, OVERVIEW_CAMERA } from "./config";
+import { DETERMINISTIC, computeBodyPosition, revealOf, sim } from "./registry";
 import { scrollPose } from "./scrollBridge";
 
 const ORIGIN = new Vector3(0, 0, 0);
 const TAU = Math.PI * 2;
-
-/**
- * Azimuth that places the camera on the planet's outward side, looking back
- * toward the system center — so the Sun sits small and distant behind the
- * body instead of photobombing the frame at close range.
- */
-function outwardAzimuth(id: BodyId, aheadSimSeconds = 0): number {
-  const def = BODY_MAP[id];
-  // The sun's projected screen offset scales with orbit/(orbit + camera
-  // distance), so a flat bearing constant reads wider on Mars (far orbit,
-  // close camera) than on Earth. Normalize per planet to Earth's ratio so
-  // the sun lands in the same screen spot from every section. The sun
-  // itself has no orbit — any bearing works; keep the base constant.
-  let offset = 0.35;
-  if (def.orbitRadius > 0) {
-    const earth = BODY_MAP.earth;
-    const reference = earth.orbitRadius / (earth.orbitRadius + fitDistance("earth"));
-    const ratio = def.orbitRadius / (def.orbitRadius + fitDistance(id));
-    offset = 0.35 * (reference / ratio);
-  }
-  // Predict ahead: a flight that aims at the azimuth of launch time lands
-  // behind the still-orbiting planet and visibly corrects on arrival.
-  return def.phase + (sim.t + aheadSimSeconds) * def.orbitSpeed - offset;
-}
-
-
-
-
-/**
- * Focus distance, widened on narrow screens so the whole body — Saturn's
- * rings included — fits the portrait frame.
- */
-function focusElevationOf(id: BodyId): number {
-  return BODY_MAP[id].focusElevation ?? FOCUS_ELEVATION;
-}
-
-function fitDistance(id: BodyId): number {
-  return BODY_MAP[id].focusDistance * (useSiteStore.getState().isMobile ? 2.1 : 1);
-}
-
-/**
- * Sim-time the orbits will advance during a flight of this real duration.
- * sim.speed ramps toward 1 (rate SIM_RAMP_RATE) once a flight starts, so
- * predicting with the launch-time speed misses the landing: the sun ends
- * off its centered-behind-the-planet arrangement and the settle glide
- * visibly pivots it into place.
- */
-function simAdvanceDuring(durationSeconds: number): number {
-  return (
-    durationSeconds -
-    ((1 - sim.speed) * (1 - Math.exp(-SIM_RAMP_RATE * durationSeconds))) / SIM_RAMP_RATE
-  );
-}
-
-/** Shortest signed angular difference, in (-PI, PI]. */
-function shortestDelta(from: number, to: number): number {
-  let delta = (to - from) % TAU;
-  if (delta > Math.PI) {
-    delta -= TAU;
-  }
-  if (delta <= -Math.PI) {
-    delta += TAU;
-  }
-  return delta;
-}
 
 type CameraProxy = {
   azimuth: number;
@@ -128,7 +70,7 @@ export function CameraDirector() {
 
   // Initialize before the first paint so deep links start already framed.
   if (!proxyRef.current || !anchorRef.current) {
-    const initialView = useSiteStore.getState().view;
+    const { view: initialView, isMobile, reducedMotion } = useSiteStore.getState();
     const proxy: CameraProxy = {
       azimuth: OVERVIEW_CAMERA.initialAzimuth,
       elevation: OVERVIEW_CAMERA.elevation,
@@ -145,13 +87,12 @@ export function CameraDirector() {
       anchor.toId = initialView;
       proxy.travel = 1;
       proxy.off = 1;
-      proxy.radius = fitDistance(initialView) * 1.45;
+      proxy.radius = fitDistance(initialView, isMobile) * 1.45;
       proxy.elevation = focusElevationOf(initialView) + 0.22;
       // The settle tween rotates this offset away; reduced motion skips the
       // tween, so it must start already on the outward azimuth.
       proxy.azimuth =
-        outwardAzimuth(initialView) -
-        (useSiteStore.getState().reducedMotion ? 0 : Math.PI * 0.3);
+        outwardAzimuth(initialView, sim.t, isMobile) - (reducedMotion ? 0 : Math.PI * 0.3);
       // Deep links start composed; gliding up from zero would pan on load.
       lastComposeDistance.current = BODY_MAP[initialView].focusDistance;
     }
@@ -238,12 +179,12 @@ export function CameraDirector() {
         // Deep link: already near the body, short settle, no sweep.
         const duration = reduced ? 0.6 : 1.6;
         tl.to(proxy, {
-          radius: fitDistance(target),
+          radius: fitDistance(target, store.isMobile),
           elevation: focusElevationOf(target),
           // Absolute, orbit-predicted landing: the planet keeps moving
           // during the settle, and a relative spin lands on its load-time
           // azimuth — the sun then visibly pivots into place afterward.
-          azimuth: proxy.azimuth + shortestDelta(proxy.azimuth, outwardAzimuth(target, simAdvanceDuring(duration))),
+          azimuth: proxy.azimuth + shortestDelta(proxy.azimuth, landingAzimuth(target, duration, sim, store.isMobile)),
           duration,
           ease: "power2.out",
         }, 0);
@@ -304,7 +245,7 @@ export function CameraDirector() {
       proxy.travel = 0;
       const visited = Boolean(store.visited[target]);
       const duration = reduced ? 0.6 : visited ? 2.1 : 2.9;
-      const landing = shortestDelta(proxy.azimuth, outwardAzimuth(target, simAdvanceDuring(duration)));
+      const landing = shortestDelta(proxy.azimuth, landingAzimuth(target, duration, sim, store.isMobile));
       // Shortest arc — the target is off-screen here, so there is no
       // visible side to honor.
       const spin = reduced ? 0 : landing;
@@ -316,7 +257,7 @@ export function CameraDirector() {
         ease: "power2.inOut",
       }, 0);
       tl.to(proxy, {
-        radius: fitDistance(target),
+        radius: fitDistance(target, store.isMobile),
         elevation: focusElevationOf(target),
         duration: duration * 0.55,
       }, duration * 0.45);
@@ -334,7 +275,7 @@ export function CameraDirector() {
       proxy.travel = 0;
       const visited = Boolean(store.visited[target]);
       const duration = reduced ? 0.5 : visited ? 1.7 : 2.9;
-      const landing = shortestDelta(proxy.azimuth, outwardAzimuth(target, simAdvanceDuring(duration)));
+      const landing = shortestDelta(proxy.azimuth, landingAzimuth(target, duration, sim, store.isMobile));
       // Rotate toward the planet's CURRENT screen side: a planet shown on
       // the left is approached panning right-to-left, and vice versa.
       // screenX ∝ the planet's horizontal screen position for an orbiting
@@ -357,7 +298,7 @@ export function CameraDirector() {
       tl.to(proxy, {
         travel: 1,
         azimuth: `+=${spin}`,
-        radius: fitDistance(target),
+        radius: fitDistance(target, store.isMobile),
         elevation: focusElevationOf(target),
         duration,
         ease: "power2.inOut",
@@ -409,18 +350,23 @@ export function CameraDirector() {
       let targetAzimuth: number;
       if (settledBody) {
         if (frozenAzimuth.current?.body !== settledBody) {
-          frozenAzimuth.current = { body: settledBody, value: outwardAzimuth(settledBody) };
+          frozenAzimuth.current = {
+            body: settledBody,
+            value: outwardAzimuth(settledBody, sim.t, store.isMobile),
+          };
         }
         targetAzimuth = frozenAzimuth.current.value;
       } else {
         frozenAzimuth.current = null;
-        const azimuthA = outwardAzimuth(a);
+        const azimuthA = outwardAzimuth(a, sim.t, store.isMobile);
         targetAzimuth =
-          azimuthA + (a === b ? 0 : shortestDelta(azimuthA, outwardAzimuth(b)) * eased);
+          azimuthA +
+          (a === b ? 0 : shortestDelta(azimuthA, outwardAzimuth(b, sim.t, store.isMobile)) * eased);
       }
       const bump = eased * (1 - eased);
       const targetRadius =
-        MathUtils.lerp(fitDistance(a), fitDistance(b), eased) * (1 + 1.3 * bump);
+        MathUtils.lerp(fitDistance(a, store.isMobile), fitDistance(b, store.isMobile), eased) *
+        (1 + 1.3 * bump);
       // Lerp per-body elevations so scrolling into a body with its own
       // focus elevation (the sun) lands exactly where a flight would.
       const targetElevation =
@@ -452,9 +398,12 @@ export function CameraDirector() {
         lit.add(b);
       }
     } else if (!active) {
-      // Idle drift keeps the overview alive between transitions.
-      const focusedDrift = anchor.toId && proxy.travel > 0.5;
-      proxy.azimuth += delta * (focusedDrift ? 0.012 : 0.03) * (store.reducedMotion ? 0.15 : 1);
+      // Idle drift keeps the overview alive between transitions; it would
+      // also move deterministic frames, so it stops there.
+      if (!DETERMINISTIC) {
+        const focusedDrift = anchor.toId && proxy.travel > 0.5;
+        proxy.azimuth += delta * (focusedDrift ? 0.012 : 0.03) * (store.reducedMotion ? 0.15 : 1);
+      }
       // Track resize/rotation while idle at the overview so the framing
       // never goes stale waiting for the next navigation.
       if (proxy.travel < 0.01 && proxy.off < 0.01) {

@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { Pose } from "./helpers";
+import { waitForArrival } from "./helpers";
 
 /**
  * Tab switches must never show the destination page before the flight:
@@ -22,60 +23,70 @@ const TABS = [
 const CIRCUIT = [0, 1, 0, 2, 0, 3, 0, 4, 1, 2, 1, 3, 1, 4, 2, 3, 2, 4, 3, 4, 0];
 
 type Frame = [opacity: number, section: string];
+type Recorder = { trace: Frame[]; done: boolean };
 
 /** Above this, text is perceptible on screen. */
 const VISIBLE_OPACITY = 0.1;
 
-async function flashFrames(page: import("@playwright/test").Page, label: string, target: string) {
-  await page.evaluate(() => {
-    const trace: Frame[] = [];
-    (window as unknown as { __trace: Frame[] }).__trace = trace;
-    const t0 = performance.now();
-    const tick = () => {
-      const root = document.querySelector("[data-scroll-root]");
-      if (root) {
-        const shown = [...root.querySelectorAll<HTMLElement>("[data-section]")].find(
-          (section) => Math.abs(section.getBoundingClientRect().top) < 5,
-        );
-        trace.push([Number(getComputedStyle(root).opacity), shown?.dataset.section ?? "-"]);
-      }
-      if (performance.now() - t0 < 1500) {
+/** SectionPanel jumps once the container is at or below this. */
+const HIDDEN_OPACITY = 0.02;
+
+/**
+ * Clicks a tab and records frames until the page has jumped to `target`
+ * behind hidden content (20s cap), then asserts the old page dissolved
+ * first and the new one never showed before the jump.
+ */
+async function expectNoFlash(page: Page, label: string, target: string, name: string) {
+  await page.evaluate(
+    ([target, hidden]) => {
+      const recorder: Recorder = { trace: [], done: false };
+      (window as unknown as { __recorder: Recorder }).__recorder = recorder;
+      const t0 = performance.now();
+      const tick = () => {
+        const root = document.querySelector("[data-scroll-root]");
+        if (root) {
+          const shown = [...root.querySelectorAll<HTMLElement>("[data-section]")].find(
+            (section) => Math.abs(section.getBoundingClientRect().top) < 5,
+          );
+          const opacity = Number(getComputedStyle(root).opacity);
+          const section = shown?.dataset.section ?? "-";
+          recorder.trace.push([opacity, section]);
+          if (section === target && opacity <= hidden) {
+            recorder.done = true;
+            return;
+          }
+        }
+        if (performance.now() - t0 > 20_000) {
+          recorder.done = true;
+          return;
+        }
         requestAnimationFrame(tick);
-      }
-    };
-    requestAnimationFrame(tick);
-  });
-  await page.getByRole("navigation", { name: "Sections" }).getByText(label, { exact: true }).click();
-  await page.waitForFunction(
-    (id) => {
-      const pose = (window as unknown as { __pose?: Pose }).__pose;
-      return pose?.view === id && !pose.moving;
+      };
+      requestAnimationFrame(tick);
     },
-    target,
-    // Full-motion flights render slowly on software-GL runners.
-    { timeout: 90_000 },
+    [target, HIDDEN_OPACITY] as const,
   );
-  const trace = await page.evaluate(() => (window as unknown as { __trace: Frame[] }).__trace);
-  // The fade-out runs from the first dimmed frame to the lowest opacity
-  // reached. Short flights reverse it before full transparency (content
-  // returns), so the turnaround — not a fixed threshold — ends it.
-  const start = trace.findIndex(([opacity]) => opacity < 0.999);
-  if (start === -1) {
-    return 0;
-  }
-  let lowest = start;
-  for (let i = start; i < trace.length; i += 1) {
-    if (trace[i][0] <= trace[lowest][0]) {
-      lowest = i;
-    } else if (trace[i][0] > trace[lowest][0] + 0.05) {
-      break;
-    }
-  }
-  // A flash is the target on screen at a perceptible opacity before the
-  // turnaround; the bug showed it at full opacity.
-  return trace
-    .slice(start, lowest + 1)
-    .filter(([opacity, section]) => section === target && opacity > VISIBLE_OPACITY).length;
+  await page.getByRole("navigation", { name: "Sections" }).getByText(label, { exact: true }).click();
+  const handle = await page.waitForFunction(
+    () => {
+      const recorder = (window as unknown as { __recorder: Recorder }).__recorder;
+      return recorder.done ? recorder.trace : null;
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  const trace = (await handle.jsonValue()) as Frame[];
+  expect(trace.findIndex(([opacity]) => opacity < 0.999), `${name}: fade-out`).toBeGreaterThan(-1);
+  expect(Math.min(...trace.map(([opacity]) => opacity)), `${name}: hidden`).toBeLessThanOrEqual(
+    HIDDEN_OPACITY,
+  );
+  expect(trace.at(-1)?.[1], `${name}: jump`).toBe(target);
+  // A flash is the target on screen at a perceptible opacity; the bug
+  // showed it at full opacity.
+  const flashes = trace.filter(
+    ([opacity, section]) => section === target && opacity > VISIBLE_OPACITY,
+  ).length;
+  expect(flashes, `${name}: flash frames`).toBe(0);
 }
 
 for (const [device, use] of [
@@ -102,7 +113,8 @@ for (const [device, use] of [
       for (let i = 1; i < CIRCUIT.length; i += 1) {
         const [label, id] = TABS[CIRCUIT[i]];
         const from = TABS[CIRCUIT[i - 1]][0];
-        expect(await flashFrames(page, label, id), `${from} → ${label} flash frames`).toBe(0);
+        await expectNoFlash(page, label, id, `${from} → ${label}`);
+        await waitForArrival(page, id);
         const top = await page
           .locator(`[data-section="${id}"]`)
           .evaluate((section) => Math.round(section.getBoundingClientRect().top));
@@ -129,7 +141,7 @@ for (const [device, use] of [
         undefined,
         { timeout: 60_000 },
       );
-      expect(await flashFrames(page, "GitHub", "mars"), "Home → GitHub flash frames").toBe(0);
+      await expectNoFlash(page, "GitHub", "mars", "Home → GitHub");
       await context.close();
     });
   });

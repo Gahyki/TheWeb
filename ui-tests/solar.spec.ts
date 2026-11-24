@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectContentShown } from "./helpers";
 
 test.describe("solar system navigation", () => {
   test.beforeEach(async ({ page }) => {
@@ -50,9 +51,7 @@ test.describe("solar system navigation", () => {
       // planet caption is a scene sprite now, invisible to the DOM.
       await nav.getByText(label, { exact: true }).click();
       await expect(page).toHaveURL(path, { timeout: 10_000 });
-      await expect(page.locator(`[data-section="${section}"]`)).toBeInViewport({
-        timeout: 10_000,
-      });
+      await expectContentShown(page, section);
 
       // Section → overview flight completes and tears the scroller down.
       await page.getByRole("button", { name: /to system/ }).click();

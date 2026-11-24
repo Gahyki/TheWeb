@@ -6,7 +6,7 @@ import { useSiteStore } from "../state/store";
 import type { BodyDef, MoonDef } from "./config";
 import { circleGeometry, gridSphereGeometry } from "./geometry";
 import type { BodyReveals } from "./registry";
-import { revealOf, sim } from "./registry";
+import { DETERMINISTIC, revealOf, sim } from "./registry";
 import {
   makeFresnelMaterial,
   makeLineMaterial,
@@ -228,7 +228,8 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
         Math.sin(angle) * def.orbitRadius,
       );
     }
-    if (spinRef.current) {
+    // Real-time spin would make deterministic frames depend on run length.
+    if (spinRef.current && !DETERMINISTIC) {
       spinRef.current.rotation.y += def.spinSpeed * delta * sim.speed;
     }
     const state = useSiteStore.getState();

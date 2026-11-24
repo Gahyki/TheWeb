@@ -37,4 +37,22 @@ test.describe("degraded mode without WebGL", () => {
 
     expect(errors.filter((message) => !message.includes("WebSocket"))).toEqual([]);
   });
+
+  test("Enter activates the focused tab, not the unseen overview highlight", async ({ page }) => {
+    await page.goto("/system");
+    await expect(page.locator("canvas")).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "Sections" });
+    await nav.getByText("Experience", { exact: true }).click();
+    await expect(page).toHaveURL("/experience");
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL("/system");
+    await expect(nav.getByText("Experience", { exact: true })).toBeFocused();
+
+    // Without a scene the highlight is invisible, so Enter must not follow it.
+    for (let i = 0; i < 3; i += 1) {
+      await page.keyboard.press("ArrowRight");
+    }
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL("/experience");
+  });
 });

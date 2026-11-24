@@ -9,11 +9,11 @@ The personal website of Jason Kim, a software engineer in Vancouver, Canada — 
 - Navigation is tabs-only (top nav), plus keyboard (arrows/Enter to move between sections, Escape to return). Selecting a section flies the camera in a ~270° sweep into the body; its moons and orbit trails fade in on approach. Every section has a real URL and supports deep links and browser history.
 - Moon radii are true to the real moon:planet ratios (orbit distances are stylized). Earth carries a glowing marker at Vancouver's coordinates.
 - `prefers-reduced-motion` replaces camera flights with fast fades; mobile gets reduced line density, no bloom, and a bottom-sheet panel layout.
-- Browser support: evergreen Chrome, Edge, Firefox, and Safari 15+ (the 3D scene requires WebGL2). If WebGL is unavailable, the site degrades gracefully: the tab navigation and all section content still work as plain HTML.
+- Browser support: evergreen Chrome, Edge, Firefox, and Safari/iOS 16.4+ (the 3D scene requires WebGL2). If WebGL is unavailable, the site degrades gracefully: the tab navigation and all section content still work as plain HTML.
 
 ## Code layout
 
-- `src/scene/` — the 3D world. `config.ts` holds all celestial data; `CameraDirector.tsx` owns every camera transition; `shaders.ts`/`geometry.ts` build the line-work materials and grids.
+- `src/scene/` — the 3D world. `Scene.tsx` is the canvas and its render loop (frame pacing, adaptive quality); `SolarSystem.tsx` mounts every body and advances the clock; `config.ts` holds all celestial data; `registry.ts` holds the orbit clock and computes body positions; `CameraDirector.tsx` owns every camera transition, using the pure framing math in `cameraMath.ts`; `shaders.ts`/`geometry.ts` build the line-work materials and grids.
 - `src/ui/` — the HTML overlay: chrome, panel choreography, and one component per section under `panels/`.
 - `src/state/store.ts` — zustand store connecting scene and UI; `src/router.ts` maps views to URLs.
 - `server/` — Express API; `api/` exposes it as Vercel Functions.
@@ -26,7 +26,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The frontend runs through Vite at `http://localhost:5173`, and the API runs locally at `http://127.0.0.1:3001` (loopback by default; deployment platforms set `HOST`). Vite proxies `/api` requests to the API. Use `npm test` for the API suites in `tests/` and `npm run test:ui` for Playwright browser checks in `ui-tests/` (install the browser once with `npx playwright install chromium`). Create a production build with `npm run build`; preview with `npm run preview`; start the compiled API with `npm run start:api`. `npm run lint` runs Biome and `npm run typecheck` checks all TypeScript projects.
+The frontend runs through Vite at `http://localhost:5173`, and the API runs locally at `http://127.0.0.1:3001` (loopback by default; deployment platforms set `HOST`). Vite proxies `/api` requests to the API. Use `npm test` for the API suites in `tests/` and `npm run test:ui` for Playwright browser checks in `ui-tests/`, including a smoke test of the production build (install the browser once with `npx playwright install chromium`). Create a production build with `npm run build`; preview it with `npm run preview`, which serves `vercel.json`'s security headers; start the compiled API with `npm run start:api`. `npm run lint` runs Biome and `npm run typecheck` checks all TypeScript projects.
 
 ## API
 

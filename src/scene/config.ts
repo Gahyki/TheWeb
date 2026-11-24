@@ -1,4 +1,4 @@
-import type { BodyId } from "../state/store";
+import type { BodyId } from "../state/store.js";
 
 const TAU = Math.PI * 2;
 
@@ -301,3 +301,6 @@ export const OVERVIEW_CAMERA = {
 };
 
 export const FOCUS_ELEVATION = 0.24;
+
+/** Rate at which sim.speed eases toward its target (see SolarSystem). */
+export const SIM_RAMP_RATE = 7;

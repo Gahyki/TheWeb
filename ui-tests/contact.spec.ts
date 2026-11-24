@@ -1,14 +1,15 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 
 const MESSAGE = "A thoughtful message with plenty of length to pass validation.";
+const DEFAULT_ERROR = "The contact form is unavailable right now. Please try again later.";
 
 /** Deep-link to the contact section and fill the form. */
-async function fillContactForm(page: Page) {
+async function fillContactForm(page: Page, message = MESSAGE) {
   await page.goto("/contact");
   await expect(page.locator('input[name="name"]')).toBeVisible({ timeout: 15_000 });
   await page.locator('input[name="name"]').fill("Ada Lovelace");
   await page.locator('input[name="email"]').fill("ada@example.com");
-  await page.locator('textarea[name="message"]').fill(MESSAGE);
+  await page.locator('textarea[name="message"]').fill(message);
 }
 
 test.describe("contact form submission", () => {
@@ -37,6 +38,67 @@ test.describe("contact form submission", () => {
     await expect(page.locator('input[name="email"]')).toHaveValue("");
     await expect(page.locator('textarea[name="message"]')).toHaveValue("");
   });
+
+  test("a multi-line message posts as LF-only JSON, one send at a time", async ({ page }) => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/contact", async (route) => {
+      await held;
+      await route.fulfill({ status: 202, json: { status: "accepted" } });
+    });
+    // Chromium's FormData already gives LF; feed CRLF so the client's own
+    // strip is what gets tested.
+    await page.addInitScript(() => {
+      const get = FormData.prototype.get;
+      FormData.prototype.get = function (this: FormData, name: string) {
+        const value = get.call(this, name);
+        return typeof value === "string" ? value.replace(/\n/g, "\r\n") : value;
+      };
+    });
+    await fillContactForm(page, "Line one is long enough.\nLine two.");
+    const sent = page.waitForRequest("**/api/contact");
+    const submit = page.locator('[data-section="sun"] button[type="submit"]');
+    await submit.click();
+
+    const request = await sent;
+    expect(request.method()).toBe("POST");
+    expect(await request.headerValue("content-type")).toBe("application/json");
+    expect(request.postDataJSON()).toEqual({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      message: "Line one is long enough.\nLine two.",
+    });
+    await expect(submit).toHaveText("Sending…");
+    await expect(submit).toBeDisabled();
+
+    release();
+    await expect(page.getByRole("status")).toHaveText("Thanks, your message was sent.");
+    await expect(submit).toHaveText("Send message");
+    await expect(submit).toBeEnabled();
+  });
+
+  for (const [failure, reply] of [
+    ["a network failure", (route: Route) => route.abort("failed")],
+    [
+      "a non-JSON 502",
+      (route: Route) =>
+        route.fulfill({ status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>" }),
+    ],
+  ] as const) {
+    test(`${failure} shows the generic error and keeps the draft`, async ({ page }) => {
+      await page.route("**/api/contact", reply);
+      await fillContactForm(page);
+      await page.getByRole("button", { name: "Send message" }).click();
+
+      await expect(page.getByRole("alert")).toHaveText(DEFAULT_ERROR);
+      await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled();
+      await expect(page.locator('input[name="name"]')).toHaveValue("Ada Lovelace");
+      await expect(page.locator('input[name="email"]')).toHaveValue("ada@example.com");
+      await expect(page.locator('textarea[name="message"]')).toHaveValue(MESSAGE);
+    });
+  }
 
   test("a field validation error surfaces and preserves the typed message", async ({ page }) => {
     await page.route("**/api/contact", (route) =>

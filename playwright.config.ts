@@ -14,8 +14,14 @@ export default defineConfig({
     // Debuggable CI failures: traces are uploaded as artifacts.
     trace: "retain-on-failure",
   },
-  // Both servers start so wiring.spec.ts can exercise the real Vite→API
-  // proxy path; all other specs stub /api/* with page.route().
+  projects: [
+    // Unnamed, so snapshot file names stay project-free.
+    { testIgnore: "**/prod.spec.ts" },
+    // The built bundle under vercel.json's headers (see vite.config.ts).
+    { name: "prod", testMatch: "**/prod.spec.ts", use: { baseURL: "http://127.0.0.1:4175" } },
+  ],
+  // The API runs for real so wiring.spec.ts and prod.spec.ts can exercise
+  // the Vite→API proxy path; all other specs stub /api/* with page.route().
   webServer: [
     {
       command: "npm run dev:api",
@@ -31,6 +37,13 @@ export default defineConfig({
       url: "http://127.0.0.1:4174",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+    },
+    {
+      command: "npx vite build && npx vite preview --host 127.0.0.1 --port 4175 --strictPort",
+      url: "http://127.0.0.1:4175",
+      // Never reuse: a leftover preview would serve a stale build.
+      reuseExistingServer: false,
+      timeout: 120_000,
     },
   ],
 });

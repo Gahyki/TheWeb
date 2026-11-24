@@ -1,5 +1,7 @@
-import { expect, test } from "@playwright/test";
-import type { Label, Pose } from "./helpers";
+import { readFileSync } from "node:fs";
+import { expect, type Page, test } from "@playwright/test";
+import type { Clip, Label, Pose } from "./helpers";
+import { lightOf } from "./helpers";
 
 /**
  * Visual regression: pixel baselines for the looks the functional tests
@@ -27,6 +29,30 @@ const SHOT = {
   threshold: 0.3,
 } as const;
 
+/** Lit-pixel tolerance vs the baseline, over scene-only regions. Measured:
+ * clean runs within 0.8%; hidden canvas −100%; Saturn without rings −10%
+ * (focused) and −16% (sheet). */
+const LIT_BAND = 0.03;
+/** Luma (0–255) above which a pixel counts as lit. */
+const LIT_LUMA = 16;
+
+/**
+ * SHOT's tolerance also passes an all-black canvas, so the frame's
+ * lit-pixel count must stay near the baseline's too. `scene` excludes all
+ * HTML text, which each machine's fonts draw differently.
+ */
+async function expectBaseline(page: Page, name: string, scene: Clip) {
+  await expect(page).toHaveScreenshot(name, SHOT);
+  const baseline = readFileSync(test.info().snapshotPath(name, { kind: "screenshot" }));
+  const expected = await lightOf(page, baseline, LIT_LUMA, scene);
+  const shot = await page.screenshot({ animations: "disabled" });
+  const actual = await lightOf(page, shot, LIT_LUMA, scene);
+  expect(
+    Math.abs(actual.lit / expected.lit - 1),
+    `${name}: ${actual.lit} lit pixels vs the baseline's ${expected.lit}`,
+  ).toBeLessThan(LIT_BAND);
+}
+
 /** Wait on state, not time: fixed sleeps capture whatever frame a given
  * machine's render speed happens to reach — state waits don't. */
 async function waitSettled(page: import("@playwright/test").Page) {
@@ -45,7 +71,8 @@ test("the system overview matches its baseline", async ({ page }) => {
   await waitSettled(page);
   // Short tail: lets the radius glide finish its last sub-pixel fraction.
   await page.waitForTimeout(500);
-  await expect(page).toHaveScreenshot("system-overview.png", SHOT);
+  // Below the nav.
+  await expectBaseline(page, "system-overview.png", { x: 0, y: 64, width: 1280, height: 656 });
 });
 
 test("a focused section matches its baseline", async ({ page }) => {
@@ -60,7 +87,8 @@ test("a focused section matches its baseline", async ({ page }) => {
     { timeout: 30_000 },
   );
   await page.waitForTimeout(500);
-  await expect(page).toHaveScreenshot("focused-saturn.png", SHOT);
+  // Saturn and its moons: below the nav, left of the panel, above the caption.
+  await expectBaseline(page, "focused-saturn.png", { x: 0, y: 64, width: 730, height: 376 });
 });
 
 test.describe("phone reels", () => {
@@ -75,7 +103,8 @@ test.describe("phone reels", () => {
       { timeout: 30_000 },
     );
     await page.waitForTimeout(500);
-    await expect(page).toHaveScreenshot("phone-home.png", SHOT);
+    // Between the top bar and the Earth caption.
+    await expectBaseline(page, "phone-home.png", { x: 0, y: 60, width: 390, height: 235 });
   });
 
   test("the Experience sheet matches its baseline", async ({ page }) => {
@@ -84,6 +113,7 @@ test.describe("phone reels", () => {
     await page.locator('[data-section="saturn"]').getByRole("button", { name: /all 4 entries/i }).click();
     await expect(page.getByRole("dialog", { name: "Experience" })).toBeVisible();
     await page.waitForTimeout(600);
-    await expect(page).toHaveScreenshot("phone-experience-sheet.png", SHOT);
+    // Above the Saturn caption and the sheet.
+    await expectBaseline(page, "phone-experience-sheet.png", { x: 0, y: 60, width: 390, height: 235 });
   });
 });

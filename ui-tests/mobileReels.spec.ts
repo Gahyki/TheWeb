@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Pose } from "./helpers";
+import { expectContentShown } from "./helpers";
 
 /**
  * Phone reels layout: full-screen pages with the caption overlaid above a
@@ -146,6 +147,16 @@ test("the back button returns to the solar system", async ({ page }) => {
   await settled(page, "mars");
   await page.getByRole("button", { name: "Back to the solar system" }).click();
   await expect(page).toHaveURL("/system");
+});
+
+test("a tab tapped on the overview lands with its reel shown", async ({ page }) => {
+  await page.goto("/github");
+  await settled(page, "mars");
+  await page.getByRole("button", { name: "Back to the solar system" }).click();
+  await settled(page, "overview");
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "Experience", exact: true }).tap();
+  await expect(page).toHaveURL("/experience");
+  await expectContentShown(page, "saturn");
 });
 
 test("swiping one screen pages to the next section and back", async ({ page }) => {

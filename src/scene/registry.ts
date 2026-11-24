@@ -30,9 +30,6 @@ export function sceneRandom(): number {
 /** Simulation clock. `speed` drops near zero under reduced motion. */
 export const sim = { t: DETERMINISTIC ? 120 : sceneRandom() * 400, speed: 1 };
 
-/** Rate at which sim.speed eases toward its target (see SolarSystem). */
-export const SIM_RAMP_RATE = 7;
-
 /** Shader clock shared by every scene material (one uniform object). */
 export const uTime = { value: 0 };
 

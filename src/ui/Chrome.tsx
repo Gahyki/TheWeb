@@ -11,7 +11,8 @@ export function Chrome() {
 function DesktopChrome() {
   const view = useSiteStore((state) => state.view);
   const navigate = useSiteStore((state) => state.navigate);
-  const showBack = view !== "overview";
+  const blackHole = useSiteStore((state) => state.blackHole !== "off");
+  const showBack = view !== "overview" || blackHole;
 
   return (
     <>

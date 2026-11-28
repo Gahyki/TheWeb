@@ -24,4 +24,11 @@ test.describe("frontend-to-API wiring (real servers)", () => {
       error: "Content-Type must be application/json.",
     });
   });
+
+  test("the sign-in gate is wired through the proxy and fails closed", async ({ request }) => {
+    // No token: 503 while the API's sign-in is unconfigured, 401 once it is.
+    const response = await request.get("/api/me");
+    expect([401, 503]).toContain(response.status());
+    expect(typeof (await response.json()).error).toBe("string");
+  });
 });

@@ -1,5 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./authStubs";
 import type { Perf, Pose } from "./helpers";
+import { clickSun, waitForSunPhase } from "./helpers";
 
 /**
  * Performance validations built on deterministic invariants — frame-pacing
@@ -7,10 +9,10 @@ import type { Perf, Pose } from "./helpers";
  * machine, unlike wall-clock benchmarks that would flake on
  * software-rendered CI runners.
  *
- * Budgets come from measured values (overview 44 / focused 37–49 draw
- * calls, 69 geometries + 5 textures after a full tour) plus headroom; a
- * breach means something structural regressed (culling broken, a
- * component leaking geometry, runaway draw calls), not that a runner was
+ * Budgets come from measured values (overview 44 / focused 37–49 / black
+ * hole 10 draw calls, 69 geometries + 5 textures after a full tour) plus
+ * headroom; a breach means something structural regressed (culling broken,
+ * a component leaking geometry, runaway draw calls), not that a runner was
  * slow.
  */
 
@@ -186,6 +188,58 @@ test("repeat visits leak no GPU resources, JS heap, DOM nodes, or listeners", as
     firstProcess.nodes,
   );
   expect(secondProcess.listeners, "event listeners after second tour").toBeLessThanOrEqual(
+    firstProcess.listeners,
+  );
+});
+
+test("black hole cycles leak no GPU resources or listeners and stay in budget", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+  await cdp.send("HeapProfiler.enable");
+  const snapshot = async () => {
+    await cdp.send("HeapProfiler.collectGarbage");
+    const { metrics } = await cdp.send("Performance.getMetrics");
+    const metric = (name: string) => metrics.find((m) => m.name === name)?.value ?? Number.NaN;
+    return { nodes: metric("Nodes"), listeners: metric("JSEventListeners") };
+  };
+
+  await page.goto("/system?det=1");
+  await waitForView(page, "overview");
+  await page.waitForTimeout(500);
+  const rest = ((await page.evaluate(readPerf)) as Perf).calls;
+
+  const cycle = async () => {
+    await clickSun(page);
+    await waitForSunPhase(page, "collapsed");
+    await page.waitForTimeout(500);
+    const open = (await page.evaluate(readPerf)) as Perf;
+    expect(open.calls, "draw calls with the black hole open").toBeGreaterThan(5);
+    // The swallowed planets and their orbits skip their draw calls.
+    expect(open.calls, "draw calls with the black hole open").toBeLessThan(15);
+    await page.keyboard.press("Escape");
+    await waitForSunPhase(page, "idle");
+    await page.waitForTimeout(500);
+    const closed = (await page.evaluate(readPerf)) as Perf;
+    expect(closed.calls, "draw calls at rest after a close").toBe(rest);
+    return closed;
+  };
+
+  // The first cycle uploads the black hole's geometry; later ones reuse it.
+  const first = await cycle();
+  const firstProcess = await snapshot();
+  await cycle();
+  const second = await cycle();
+  const secondProcess = await snapshot();
+
+  expect(second.geometries, "geometries after more cycles").toBeLessThanOrEqual(first.geometries);
+  expect(second.textures, "textures after more cycles").toBeLessThanOrEqual(first.textures);
+  expect(secondProcess.nodes, "DOM nodes after more cycles").toBeLessThanOrEqual(
+    firstProcess.nodes,
+  );
+  expect(secondProcess.listeners, "event listeners after more cycles").toBeLessThanOrEqual(
     firstProcess.listeners,
   );
 });

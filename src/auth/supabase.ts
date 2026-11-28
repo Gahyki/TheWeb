@@ -1,14 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isSupabaseConfigured, supabasePublishableKey, supabaseUrl } from "./config";
 
-const url: string = import.meta.env.VITE_SUPABASE_URL || "";
-const publishableKey: string = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+export { isSupabaseConfigured };
 
 let client: SupabaseClient | undefined;
-
-/** True when the build carries Supabase credentials. Auth UI should not render without them. */
-export function isSupabaseConfigured(): boolean {
-  return Boolean(url && publishableKey);
-}
 
 /**
  * Browser Supabase client, created on first use so builds without credentials
@@ -20,6 +15,9 @@ export function getSupabase(): SupabaseClient {
       "Supabase is not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.",
     );
   }
-  client ??= createClient(url, publishableKey);
+  // A link with tokens in its URL must not sign this browser in.
+  client ??= createClient(supabaseUrl, supabasePublishableKey, {
+    auth: { detectSessionInUrl: false },
+  });
   return client;
 }

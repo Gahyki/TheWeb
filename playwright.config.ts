@@ -1,5 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
+/** Placeholder Supabase project: the sun gate arms only in builds with credentials. */
+const SUPABASE_TEST_ENV = {
+  VITE_SUPABASE_URL: "https://test-project.supabase.co",
+  VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+};
+
 export default defineConfig({
   testDir: "./ui-tests",
   testMatch: "**/*.spec.ts",
@@ -35,12 +41,14 @@ export default defineConfig({
     {
       command: "npm run dev:web -- --host 127.0.0.1 --port 4174",
       url: "http://127.0.0.1:4174",
+      env: SUPABASE_TEST_ENV,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
       command: "npx vite build && npx vite preview --host 127.0.0.1 --port 4175 --strictPort",
       url: "http://127.0.0.1:4175",
+      env: SUPABASE_TEST_ENV,
       // Never reuse: a leftover preview would serve a stale build.
       reuseExistingServer: false,
       timeout: 120_000,

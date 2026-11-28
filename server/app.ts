@@ -1,6 +1,8 @@
 import express, { type ErrorRequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import type { JWTVerifyGetKey } from "jose";
+import { type AuthenticatedUser, createRequireUser } from "./auth.js";
 import {
   getSmtpConfig,
   sendContactMessage,
@@ -15,6 +17,7 @@ type AppOptions = {
   sendEmail?: (message: ContactMessage) => Promise<void>;
   contactRateLimit?: number;
   githubFetch?: typeof fetch;
+  authKeys?: JWTVerifyGetKey;
 };
 
 function parseInteger(
@@ -38,6 +41,11 @@ function parseInteger(
 export function createApp(options: AppOptions = {}) {
   const env = options.env ?? process.env;
   const smtpConfig = getSmtpConfig(env);
+  const requireUser = createRequireUser({
+    supabaseUrl: env.SUPABASE_URL,
+    allowedUserIds: env.AUTH_ALLOWED_USER_IDS,
+    keys: options.authKeys,
+  });
   const profileBirthMonth = parseProfileBirthMonth(
     env.PROFILE_BIRTH_YEAR,
     env.PROFILE_BIRTH_MONTH,
@@ -114,6 +122,11 @@ export function createApp(options: AppOptions = {}) {
 
     response.setHeader("Cache-Control", "private, max-age=3600");
     response.json({ age: getProfileAge(profileBirthMonth, profileTimeZone) });
+  });
+
+  app.get("/api/me", requireUser, (_request, response) => {
+    const user: AuthenticatedUser = response.locals.user;
+    response.json({ id: user.id });
   });
 
   const contactRateLimiter = rateLimit({

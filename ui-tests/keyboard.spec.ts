@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
-import { waitForArrival } from "./helpers";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./authStubs";
+import { clickSun, waitForArrival, waitForSunPhase } from "./helpers";
 
 /** README's keyboard promise: arrows/Enter move between sections. */
 
@@ -63,6 +64,29 @@ test("ArrowLeft with nothing highlighted starts at the last body", async ({ page
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("Enter");
   await expectAt(page, "sun");
+});
+
+test("Escape closes the black hole, and the overview's keys work as before", async ({ page }) => {
+  await openOverview(page);
+  await page.keyboard.press("ArrowRight");
+  await clickSun(page);
+  await waitForSunPhase(page, "collapsed");
+  await expect(page.getByRole("dialog", { name: "Sign in" }).getByLabel("Email")).toBeFocused();
+  // From the page, not a field (login.spec covers that); keys meanwhile do nothing.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Escape");
+  await waitForSunPhase(page, "idle");
+  await expect(page).toHaveURL("/system");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+
+  // A fresh highlight, as in "overview arrows move the highlight".
+  for (const key of ["ArrowRight", "ArrowRight", "ArrowRight", "ArrowLeft"]) {
+    await page.keyboard.press(key);
+  }
+  await page.keyboard.press("Enter");
+  await expectAt(page, "saturn");
 });
 
 test("Enter flies to the highlight even while a tab has focus", async ({ page }) => {

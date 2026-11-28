@@ -15,8 +15,8 @@ import { SolarSystem } from "./SolarSystem";
  * high-refresh displays (144Hz+) don't render every vsync for no visual
  * gain — and never at a fractional rate, which judders (see framePacing).
  * Settled views are near-static (sim at 3% speed, only slow shader
- * breathing), so idle paces at or below idleFps; flights and scrubs get
- * the divisor nearest activeFps.
+ * breathing), so idle paces at or below idleFps; flights, scrubs, and the
+ * sun's collapse get the divisor nearest activeFps.
  */
 function FrameCap({ activeFps, idleFps }: { activeFps: number; idleFps: number }) {
   const advance = useThree((state) => state.advance);
@@ -42,8 +42,9 @@ function FrameCap({ activeFps, idleFps }: { activeFps: number; idleFps: number }
         }
         period = medianPeriod(samples, period);
       }
+      const { moving, blackHole } = useSiteStore.getState();
       const active =
-        useSiteStore.getState().moving || (scrollPose.p > 0.001 && scrollPose.p < 0.999);
+        moving || blackHole === "collapsing" || (scrollPose.p > 0.001 && scrollPose.p < 0.999);
       const vsyncs = vsyncsPerRender(period, active ? activeFps : idleFps, active);
       perfState.interval = vsyncs * period;
       perfState.period = period;
@@ -176,6 +177,8 @@ export function Scene() {
       camera={{ fov: 50, near: 0.1, far: 500, position: [0, 28, 20] }}
       gl={{ antialias: true }}
       frameloop="never"
+      // A quick double tap on the sun must not zoom the page on iOS.
+      style={{ touchAction: "manipulation" }}
       onCreated={({ gl }) => {
         gl.setClearColor("#000000");
       }}

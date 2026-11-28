@@ -36,6 +36,8 @@ test.describe("solar system navigation", () => {
   });
 
   test("every section round-trips from the overview with its caption", async ({ page }) => {
+    // Ten flights; the default 30s is too tight on a loaded runner.
+    test.setTimeout(90_000);
     const sections: Array<{ label: string; path: string; section: string; planet: string }> = [
       { label: "Home", path: "/", section: "earth", planet: "Earth" },
       { label: "Experience", path: "/experience", section: "saturn", planet: "Saturn" },

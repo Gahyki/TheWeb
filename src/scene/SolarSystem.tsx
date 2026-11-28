@@ -1,16 +1,19 @@
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
+import type { LineLoop } from "three";
 import { MathUtils } from "three";
 import { useSiteStore } from "../state/store";
 import { Body, BYSTANDER_DIM, DIM_EASE_RATE } from "./Body";
 import { BODIES, SIM_RAMP_RATE } from "./config";
 import { circleGeometry } from "./geometry";
-import { DETERMINISTIC, sim, uTime } from "./registry";
+import { DETERMINISTIC, infallNow, sim, uTime } from "./registry";
 import { makeLineMaterial } from "./shaders";
 import { CameraDirector } from "./CameraDirector";
 import { PlanetCaption } from "./PlanetCaption";
+import { Singularity } from "./Singularity";
 import { Stars } from "./Stars";
+import { SunGate } from "./SunGate";
 
 const noRaycast = () => null;
 
@@ -18,17 +21,32 @@ function OrbitPaths({ density }: { density: number }) {
   /** Shared brightness: full in the overview, receding like the
    * background planets while a section is focused. */
   const boost = useRef({ value: 1 }).current;
+  const lines = useRef<(LineLoop | null)[]>([]);
   const orbits = useMemo(() => {
-    return BODIES.filter((def) => def.orbitRadius > 0).map((def) => ({
-      id: def.id,
-      geometry: circleGeometry(def.orbitRadius, Math.round(220 * density)),
-      material: makeLineMaterial({ color: "#cfeaff", opacity: 0.7, breath: 0.14, boost }),
-    }));
-  }, [density, boost]);
+    return BODIES.filter((def) => def.orbitRadius > 0).map((def) => {
+      // Each orbit also shrinks and fades with its planet's infall.
+      const gain = { value: 1 };
+      return {
+        def,
+        gain,
+        geometry: circleGeometry(def.orbitRadius, Math.round(220 * density)),
+        material: makeLineMaterial({ color: "#cfeaff", opacity: 0.7, breath: 0.14, boost: gain }),
+      };
+    });
+  }, [density]);
 
   useFrame((_, delta) => {
     const target = useSiteStore.getState().view === "overview" ? 1 : BYSTANDER_DIM;
     boost.value = MathUtils.lerp(boost.value, target, Math.min(1, delta * DIM_EASE_RATE));
+    orbits.forEach((orbit, index) => {
+      const { radius, opacity } = infallNow(orbit.def);
+      orbit.gain.value = boost.value * opacity;
+      const line = lines.current[index];
+      if (line) {
+        line.scale.setScalar(radius / orbit.def.orbitRadius);
+        line.visible = opacity > 0;
+      }
+    });
   });
 
   useEffect(() => {
@@ -42,9 +60,12 @@ function OrbitPaths({ density }: { density: number }) {
 
   return (
     <>
-      {orbits.map((orbit) => (
+      {orbits.map((orbit, index) => (
         <lineLoop
-          key={orbit.id}
+          key={orbit.def.id}
+          ref={(line) => {
+            lines.current[index] = line;
+          }}
           geometry={orbit.geometry}
           material={orbit.material}
           raycast={noRaycast}
@@ -93,12 +114,15 @@ export function SolarSystem() {
       ))}
       <CameraDirector />
       <PlanetCaption />
+      <SunGate />
       {!isMobile && !reducedMotion && (
         // 4×MSAA (default 8) halves the multisample buffer bandwidth.
         <EffectComposer multisampling={4}>
           <Bloom mipmapBlur intensity={0.55} luminanceThreshold={0.18} luminanceSmoothing={0.35} />
         </EffectComposer>
       )}
+      {/* Last: its materials draw shader phases after everyone else's. */}
+      <Singularity />
     </>
   );
 }

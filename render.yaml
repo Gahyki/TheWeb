@@ -17,6 +17,10 @@ services:
         value: "5"
       - key: GITHUB_TOKEN
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: AUTH_ALLOWED_USER_IDS
+        sync: false
       - key: CONTACT_RATE_LIMIT_WINDOW_MS
         value: "900000"
       - key: PROFILE_BIRTH_YEAR

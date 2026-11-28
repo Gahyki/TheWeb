@@ -1,7 +1,7 @@
 /** Pure camera framing math; CameraDirector supplies the live state. */
 
 import type { BodyId } from "../state/store.js";
-import { BODY_MAP, FOCUS_ELEVATION, SIM_RAMP_RATE } from "./config.js";
+import { BLACK_HOLE_DISTANCE, BODY_MAP, FOCUS_ELEVATION, SIM_RAMP_RATE } from "./config.js";
 
 const TAU = Math.PI * 2;
 
@@ -79,4 +79,43 @@ export function landingAzimuth(
   isMobile: boolean,
 ): number {
   return outwardAzimuth(id, sim.t + simAdvanceDuring(durationSeconds, sim.speed), isMobile);
+}
+
+/** Camera distance from the black hole; phones pull back to fit the disk. */
+export function holeDistance(isMobile: boolean): number {
+  return BLACK_HOLE_DISTANCE * (isMobile ? 1.4 : 1);
+}
+
+/**
+ * Off-center composition distance for the black hole. CameraDirector's
+ * phone offset assumes the camera sits 2.1x the compose distance away (see
+ * fitDistance), so this keeps the hole where a focused planet would sit.
+ */
+export function holeComposeDistance(isMobile: boolean): number {
+  return holeDistance(isMobile) / (isMobile ? 2.1 : 1);
+}
+
+/**
+ * On-screen radius, in CSS pixels, of a sphere seen dead-on from `distance`
+ * by a camera with vertical field of view `fovDeg` over `viewportHeight`.
+ */
+export function projectedRadiusPx(
+  radius: number,
+  distance: number,
+  fovDeg: number,
+  viewportHeight: number,
+): number {
+  if (distance <= radius) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const halfAngle = Math.asin(radius / distance);
+  return ((Math.tan(halfAngle) / Math.tan((fovDeg * Math.PI) / 360)) * viewportHeight) / 2;
+}
+
+/** Smallest sun hit radius: a 44px touch target. */
+export const MIN_SUN_HIT_PX = 22;
+
+/** Sun hit radius: a little past its edge, never under MIN_SUN_HIT_PX. */
+export function sunHitRadiusPx(projectedRadius: number): number {
+  return Math.max(projectedRadius * 1.25, MIN_SUN_HIT_PX);
 }

@@ -5,8 +5,8 @@ import { MathUtils } from "three";
 import { useSiteStore } from "../state/store";
 import type { BodyDef, MoonDef } from "./config";
 import { circleGeometry, gridSphereGeometry } from "./geometry";
-import type { BodyReveals } from "./registry";
-import { DETERMINISTIC, revealOf, sim } from "./registry";
+import type { BodyReveals, RevealRef } from "./registry";
+import { DETERMINISTIC, computeBodyPosition, infallNow, revealOf, sim, singularity } from "./registry";
 import {
   makeFresnelMaterial,
   makeLineMaterial,
@@ -26,13 +26,35 @@ export const BYSTANDER_DIM = 0.45;
 /** Rate (1/s) at which focus dimming eases in and out. */
 export const DIM_EASE_RATE = 3.5;
 
-function Moon({ moon, reveals, density }: { moon: MoonDef; reveals: BodyReveals; density: number }) {
+/** `reveal` dimmed by `gain`, read when the material renders. */
+function dimmed(reveal: RevealRef, gain: RevealRef): RevealRef {
+  return {
+    get value() {
+      return reveal.value * gain.value;
+    },
+  };
+}
+
+function Moon({
+  moon,
+  reveals,
+  gain,
+  density,
+}: {
+  moon: MoonDef;
+  reveals: BodyReveals;
+  /** The planet's infall opacity: moons fade with it. */
+  gain: RevealRef;
+  density: number;
+}) {
   const orbitRef = useRef<Group>(null);
   const moonRef = useRef<Group>(null);
 
   const assets = useMemo(() => {
     const orbitGeometry = circleGeometry(moon.orbitRadius, Math.round(160 * density), true);
-    const trailMaterial = makeTrailMaterial("#d8f4ff", reveals.orbits);
+    const orbitsLit = dimmed(reveals.orbits, gain);
+    const moonsLit = dimmed(reveals.moons, gain);
+    const trailMaterial = makeTrailMaterial("#d8f4ff", orbitsLit);
     // Tiny moons (true-scale Phobos/Deimos/Rhea) read as pure points of
     // light — no grid worth drawing below ~0.02 world units.
     const hasGrid = moon.radius >= 0.02;
@@ -44,15 +66,15 @@ function Moon({ moon, reveals, density }: { moon: MoonDef; reveals: BodyReveals;
           color: "#eafaff",
           opacity: 0.6,
           breath: 0.08,
-          reveal: reveals.moons,
+          reveal: moonsLit,
         })
       : null;
     // Glow core scales with the moon so size ratios stay legible.
     const coreSize = Math.min(24, Math.max(9, 10 + moon.radius * 90));
-    const coreMaterial = makeMoonCoreMaterial(reveals.moons, coreSize);
+    const coreMaterial = makeMoonCoreMaterial(moonsLit, coreSize);
     const coreGeometry = circleGeometry(0, 1);
     return { orbitGeometry, trailMaterial, gridGeometry, gridMaterial, coreMaterial, coreGeometry };
-  }, [moon, reveals, density]);
+  }, [moon, reveals, gain, density]);
 
   useEffect(() => {
     return () => {
@@ -173,8 +195,10 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
   const spinRef = useRef<Group>(null);
   const highlightLift = useRef(1);
   const fadeSmooth = useRef(1);
-  /** Shared brightness uniform: keyboard-highlight lift × proximity fade. */
+  /** Shared brightness uniform: keyboard-highlight lift × proximity fade × infall. */
   const boost = useRef({ value: 1 }).current;
+  /** Infall opacity, for the moons. */
+  const swallow = useRef({ value: 1 }).current;
   const reveals = revealOf(def.id);
   const fresnelBase = def.id === "sun" ? 0.5 : 0.32;
 
@@ -221,18 +245,31 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
   useFrame(({ camera }, delta) => {
     const group = groupRef.current;
     if (group) {
-      const angle = def.phase + sim.t * def.orbitSpeed;
-      group.position.set(
-        Math.cos(angle) * def.orbitRadius,
-        0,
-        Math.sin(angle) * def.orbitRadius,
-      );
+      computeBodyPosition(def.id, group.position);
+    }
+    // Planets spiral into the black hole, shrinking and fading at the ring.
+    const { scale: fallScale, opacity: fallGain } = infallNow(def);
+    swallow.value = fallGain;
+    const state = useSiteStore.getState();
+    // The black hole implodes the sun: it shrinks, spins up, flares, and
+    // goes out. Reduced motion only fades it. Identity while collapse is 0.
+    let collapseScale = 1;
+    let collapseSpin = 1;
+    let collapseGain = 1;
+    if (def.id === "sun") {
+      const collapse = singularity.collapse.value;
+      if (state.reducedMotion) {
+        collapseGain = 1 - collapse;
+      } else {
+        collapseScale = 1 - 0.97 * collapse;
+        collapseSpin = 1 + 30 * collapse * collapse;
+        collapseGain = (1 + collapse) * (1 - MathUtils.smoothstep(collapse, 0.85, 1));
+      }
     }
     // Real-time spin would make deterministic frames depend on run length.
     if (spinRef.current && !DETERMINISTIC) {
-      spinRef.current.rotation.y += def.spinSpeed * delta * sim.speed;
+      spinRef.current.rotation.y += def.spinSpeed * delta * sim.speed * collapseSpin;
     }
-    const state = useSiteStore.getState();
     const lift = state.highlight === def.id ? 1.75 : 1;
     highlightLift.current = MathUtils.lerp(highlightLift.current, lift, Math.min(1, delta * 7));
 
@@ -259,11 +296,12 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
     // A dissolved bystander still rasterizes a near-fullscreen wireframe at
     // alpha ~0; skip its draw calls entirely below the perception floor.
     if (group) {
-      group.visible = fadeSmooth.current > 0.02;
+      group.visible = fadeSmooth.current > 0.02 && collapseGain > 0 && fallGain > 0;
+      group.scale.setScalar(collapseScale * fallScale);
     }
-    boost.value = highlightLift.current * fadeSmooth.current;
+    boost.value = highlightLift.current * fadeSmooth.current * collapseGain * fallGain;
     (assets.fresnelMaterial as ShaderMaterial).uniforms.uIntensity.value =
-      fresnelBase * fadeSmooth.current;
+      fresnelBase * fadeSmooth.current * collapseGain * fallGain;
   });
 
   return (
@@ -290,7 +328,7 @@ export function Body({ def, density }: { def: BodyDef; density: number }) {
         </group>
       )}
       {def.moons.map((moon) => (
-        <Moon key={moon.name} moon={moon} reveals={reveals} density={density} />
+        <Moon key={moon.name} moon={moon} reveals={reveals} gain={swallow} density={density} />
       ))}
     </group>
   );

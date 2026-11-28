@@ -302,5 +302,11 @@ export const OVERVIEW_CAMERA = {
 
 export const FOCUS_ELEVATION = 0.24;
 
+/** The black hole's photon ring radius; black inside it reads as the event horizon. */
+export const PHOTON_RING_RADIUS = 0.9;
+
+/** Camera distance from the black hole on desktops (see holeDistance). */
+export const BLACK_HOLE_DISTANCE = 11;
+
 /** Rate at which sim.speed eases toward its target (see SolarSystem). */
 export const SIM_RAMP_RATE = 7;

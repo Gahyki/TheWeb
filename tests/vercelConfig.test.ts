@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { VIEW_PATHS } from "../src/router.js";
+import { ROUTE_PATHS } from "../src/router.js";
 
 type VercelConfig = {
   rewrites: { source: string; destination: string }[];
@@ -15,7 +15,7 @@ const vercel: VercelConfig = JSON.parse(
 /** These sources have no named params, so each reads as a whole-path regex. */
 const matcher = (source: string) => new RegExp(`^${source}$`);
 
-const APP_PATHS = [...Object.values(VIEW_PATHS), "/contact/", "/nope", "/apiary"];
+const APP_PATHS = [...Object.values(ROUTE_PATHS), "/contact/", "/nope", "/apiary"];
 
 test("the SPA rewrite serves index.html for app paths and never for /api", () => {
   // Vercel applies the first matching rewrite.

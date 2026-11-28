@@ -2,10 +2,10 @@ import { useState, type FormEvent } from "react";
 import { publicContactEmail } from "../../data/contact";
 import { Eyebrow, Reveal } from "../Reveal";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const DEFAULT_ERROR = "The contact form is unavailable right now. Please try again later.";
 
-const FIELD_BASE =
+export const FIELD_BASE =
   "w-full border border-white/15 bg-transparent font-light text-white placeholder-white/30 transition-colors focus:border-white/50 focus:outline-none";
 
 /**

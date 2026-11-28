@@ -15,13 +15,17 @@ export const PANEL_EXIT_MS = MAX_STAGGER_INDEX * EXIT_STAGGER_MS + EXIT_DURATION
 export function Reveal({
   i = 0,
   className = "",
+  show,
   children,
 }: {
   i?: number;
   className?: string;
+  /** Overrides the store's uiVisible (content shown outside a section). */
+  show?: boolean;
   children: ReactNode;
 }) {
-  const on = useSiteStore((state) => state.uiVisible);
+  const uiVisible = useSiteStore((state) => state.uiVisible);
+  const on = show ?? uiVisible;
   const reducedMotion = useSiteStore((state) => state.reducedMotion);
   return (
     <div

@@ -95,3 +95,35 @@ export function circleGeometry(
   }
   return geometry;
 }
+
+/**
+ * One logarithmic spiral arm in the XZ plane for LineSegments, from
+ * `innerRadius` out to `outerRadius` while its angle falls by `sweep`
+ * (under a turn). Each vertex carries its polar angle, so the moon-trail
+ * shader with its head at angle 0 lights the inner end and fades outward.
+ */
+export function spiralArmGeometry(
+  innerRadius: number,
+  outerRadius: number,
+  sweep: number,
+  segments = 96,
+): BufferGeometry {
+  const positions = new Float32Array(segments * 6);
+  const angles = new Float32Array(segments * 2);
+  const growth = Math.log(outerRadius / innerRadius) / sweep;
+  for (let i = 0; i < segments; i += 1) {
+    for (let end = 0; end < 2; end += 1) {
+      const turned = ((i + end) / segments) * sweep;
+      const radius = innerRadius * Math.exp(growth * turned);
+      const vertex = i * 2 + end;
+      positions[vertex * 3] = Math.cos(-turned) * radius;
+      positions[vertex * 3 + 1] = 0;
+      positions[vertex * 3 + 2] = Math.sin(-turned) * radius;
+      angles[vertex] = -turned;
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  geometry.setAttribute("aAngle", new BufferAttribute(angles, 1));
+  return geometry;
+}

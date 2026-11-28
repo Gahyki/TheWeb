@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import vercel from "../vercel.json" with { type: "json" };
-import { waitForArrival } from "./helpers";
+import { CODE, OWNER, test } from "./authStubs";
+import { clickSun, waitForArmedSun, waitForArrival, waitForSunPhase } from "./helpers";
 
 /**
  * Production smoke (the "prod" project): the built bundle under
@@ -78,6 +79,66 @@ for (const [path, view] of [
     await waitForArrival(page, view);
   });
 }
+
+/** Every chunk the page fetches, by path, with its status. */
+function recordChunks(page: Page) {
+  const served = new Map<string, number>();
+  page.on("response", (response) => {
+    const { pathname } = new URL(response.url());
+    if (pathname.startsWith("/assets/")) {
+      served.set(pathname, response.status());
+    }
+  });
+  /** Statuses of the chunks named `name` (`/assets/<name>-<hash>.js`). */
+  return (name: string) =>
+    [...served].filter(([path]) => path.startsWith(`/assets/${name}-`)).map(([, status]) => status);
+}
+
+const SIGN_IN_CHUNKS = ["LoginDialog", "supabase-vendor"];
+
+test("supabase-js loads only on the sun click, then signs in under the deployed CSP", async ({
+  page,
+}) => {
+  const chunks = recordChunks(page);
+  await page.goto("/");
+  await waitForArrival(page, "earth");
+  await page.keyboard.press("Escape");
+  await waitForArrival(page, "overview");
+  await waitForArmedSun(page);
+  for (const name of SIGN_IN_CHUNKS) {
+    expect(chunks(name), `${name} before the click`).toEqual([]);
+  }
+
+  await clickSun(page);
+  await waitForSunPhase(page, "collapsed");
+  const dialog = page.getByRole("dialog", { name: "Sign in" });
+  await expect(dialog.getByLabel("Email")).toBeFocused();
+  for (const name of SIGN_IN_CHUNKS) {
+    await expect.poll(() => chunks(name), name).toEqual([200]);
+  }
+
+  // Supabase (stubbed) is a connect-src origin; /api/me (stubbed) is 'self'.
+  await dialog.getByLabel("Email").fill(OWNER.email);
+  await dialog.getByLabel("Password").fill(OWNER.password);
+  await dialog.getByRole("button", { name: "Sign in" }).click();
+  await dialog.getByLabel("Authenticator code").fill(CODE);
+  await dialog.getByRole("button", { name: "Verify" }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Signed in.");
+});
+
+test("/void opens the sign-in under the deployed CSP", async ({ page, auth }) => {
+  const chunks = recordChunks(page);
+  const response = await page.goto("/void");
+  expect(response?.headers()["content-security-policy"]).toBe(DEPLOYED_CSP);
+  await waitForSunPhase(page, "collapsed");
+  await expect(page.getByRole("dialog", { name: "Sign in" }).getByLabel("Email")).toBeFocused();
+  await expect(page).toHaveURL("/void");
+  for (const name of SIGN_IN_CHUNKS) {
+    await expect.poll(() => chunks(name), name).toEqual([200]);
+  }
+  // No stored session: nothing to ask Supabase yet.
+  expect(auth.requests).toEqual([]);
+});
 
 test("the contact form's POST reaches the real API through the preview proxy", async ({
   page,

@@ -1,36 +1,57 @@
 import { Component, useEffect, type ReactNode } from "react";
-import { MOBILE_MEDIA_QUERY, REDUCED_MOTION_MEDIA_QUERY } from "./mediaQueries";
-import { VIEW_PATHS, VIEW_TITLES, viewFromPath } from "./router";
+import {
+  MOBILE_MEDIA_QUERY,
+  REDUCED_MOTION_MEDIA_QUERY,
+  SHORT_LANDSCAPE_MEDIA_QUERY,
+} from "./mediaQueries";
+import { ROUTE_PATHS, ROUTE_TITLES, routeFromPath, routeOf } from "./router";
 import { BODY_ORDER } from "./scene/config";
 import { Scene } from "./scene/Scene";
 import { useSiteStore } from "./state/store";
 import { Chrome } from "./ui/Chrome";
+import { LoginLayer } from "./ui/login/LoginLayer";
 import { SectionPanel } from "./ui/SectionPanel";
 
 function useRouterSync() {
   useEffect(() => {
+    /** True while applying a history traversal: its URL is already set. */
+    let traversing = false;
     const unsubscribe = useSiteStore.subscribe((state, previous) => {
-      if (state.view !== previous.view) {
-        // Compare views, not raw paths: a non-canonical URL (e.g. /contact/)
+      const route = routeOf(state);
+      if (route !== routeOf(previous)) {
+        // Compare routes, not raw paths: a non-canonical URL (e.g. /contact/)
         // must not trigger a push after Back, which would kill forward
         // history mid-traversal.
-        if (viewFromPath(window.location.pathname) !== state.view) {
+        if (routeFromPath(window.location.pathname) !== route) {
           // Scrolling through sections rewrites the URL without flooding
-          // history; clicks and keys still create real entries.
-          if (state.viewSource === "scroll") {
-            window.history.replaceState({}, "", VIEW_PATHS[state.view]);
+          // history; clicks and keys still create real entries. Corrections
+          // replace too: a traversal the store refused, or the scene failing.
+          if (
+            state.viewSource === "scroll" ||
+            traversing ||
+            (state.degraded && !previous.degraded)
+          ) {
+            window.history.replaceState({}, "", ROUTE_PATHS[route]);
           } else {
-            window.history.pushState({}, "", VIEW_PATHS[state.view]);
+            window.history.pushState({}, "", ROUTE_PATHS[route]);
           }
         }
-        document.title = VIEW_TITLES[state.view];
+        document.title = ROUTE_TITLES[route];
       }
     });
     const onPopState = () => {
-      useSiteStore.getState().navigate(viewFromPath(window.location.pathname));
+      const route = routeFromPath(window.location.pathname);
+      const state = useSiteStore.getState();
+      traversing = true;
+      if (route === "blackHole") {
+        state.openBlackHole("history");
+      } else {
+        state.navigate(route);
+      }
+      traversing = false;
     };
     window.addEventListener("popstate", onPopState);
-    document.title = VIEW_TITLES[useSiteStore.getState().view];
+    document.title = ROUTE_TITLES[routeOf(useSiteStore.getState())];
     return () => {
       unsubscribe();
       window.removeEventListener("popstate", onPopState);
@@ -41,18 +62,22 @@ function useRouterSync() {
 function useMediaFlags() {
   useEffect(() => {
     const mobileQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const landscapeQuery = window.matchMedia(SHORT_LANDSCAPE_MEDIA_QUERY);
     const motionQuery = window.matchMedia(REDUCED_MOTION_MEDIA_QUERY);
     const apply = () => {
       useSiteStore.getState().setFlags({
         isMobile: mobileQuery.matches,
+        shortLandscape: landscapeQuery.matches,
         reducedMotion: motionQuery.matches,
       });
     };
     apply();
     mobileQuery.addEventListener("change", apply);
+    landscapeQuery.addEventListener("change", apply);
     motionQuery.addEventListener("change", apply);
     return () => {
       mobileQuery.removeEventListener("change", apply);
+      landscapeQuery.removeEventListener("change", apply);
       motionQuery.removeEventListener("change", apply);
     };
   }, []);
@@ -62,6 +87,15 @@ function useKeyboardNavigation() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = useSiteStore.getState();
+      // Over the black hole only Escape is ours, even inside its form;
+      // every other key stays native.
+      if (state.blackHole !== "off") {
+        if (event.key === "Escape" && !event.isComposing) {
+          event.preventDefault();
+          state.closeBlackHole();
+        }
+        return;
+      }
       const target = event.target instanceof Element ? event.target : null;
       // Never steal keys from inside a form (Escape must not nuke a
       // half-written contact message, even from the Send button).
@@ -160,6 +194,7 @@ export default function App() {
       </div>
       <SectionPanel />
       <Chrome />
+      <LoginLayer />
     </div>
   );
 }

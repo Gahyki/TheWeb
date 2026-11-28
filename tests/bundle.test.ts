@@ -6,6 +6,11 @@ import { build, resolveConfig, type Rolldown } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+// A build with Supabase settings keeps the lazy sign-in (and supabase-js) in
+// the output; this placeholder project matches playwright.config.ts.
+process.env.VITE_SUPABASE_URL = "https://test-project.supabase.co";
+process.env.VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+
 /** Production JS chunks, built in memory with the real vite.config.ts. */
 async function buildChunks(): Promise<Rolldown.OutputChunk[]> {
   const result = await build({ root, logLevel: "silent", build: { write: false } });
@@ -29,6 +34,52 @@ test("library code ships in vendor chunks, apart from app code", async () => {
   assert.deepEqual(entry.moduleIds.filter((id) => id.includes("/node_modules/")), []);
   assert.deepEqual(chunksWith("three"), ["three-vendor"]);
   assert.deepEqual(chunksWith("react-dom"), ["react-vendor"]);
+});
+
+test("supabase-js ships only in the lazy sign-in's chunks", async () => {
+  const chunks = await buildChunks();
+  const byFile = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
+  /** Chunks a page loads with `start`, following static imports only. */
+  const staticClosure = (start: Rolldown.OutputChunk) => {
+    const seen = new Set<Rolldown.OutputChunk>();
+    const visit = (chunk: Rolldown.OutputChunk | undefined) => {
+      if (chunk && !seen.has(chunk)) {
+        seen.add(chunk);
+        for (const file of chunk.imports) {
+          visit(byFile.get(file));
+        }
+      }
+    };
+    visit(start);
+    return [...seen];
+  };
+  const supabaseIn = (chunk: Rolldown.OutputChunk) =>
+    chunk.moduleIds.filter((id) => id.includes("/node_modules/@supabase/"));
+
+  const entry = chunks.find((chunk) => chunk.isEntry);
+  assert.ok(entry);
+  const eager = staticClosure(entry);
+  assert.ok(eager.some((chunk) => chunk.name === "vendor"), "the catch-all vendor chunk loads eagerly");
+  assert.deepEqual(eager.flatMap(supabaseIn), []);
+
+  const lazy = entry.dynamicImports.flatMap((file) => {
+    const chunk = byFile.get(file);
+    return chunk ? staticClosure(chunk) : [];
+  });
+  assert.deepEqual(
+    [...new Set(lazy.filter((chunk) => supabaseIn(chunk).length > 0).map((chunk) => chunk.name))],
+    ["supabase-vendor"],
+  );
+});
+
+test("the build refuses a Supabase secret key in a VITE_* value", async () => {
+  const publishable = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY = "sb_secret_placeholder";
+  try {
+    await assert.rejects(buildChunks(), /VITE_SUPABASE_PUBLISHABLE_KEY holds a Supabase secret key/);
+  } finally {
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY = publishable;
+  }
 });
 
 test("the README's Safari floor is the build target", async () => {

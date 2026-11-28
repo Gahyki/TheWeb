@@ -13,7 +13,8 @@ export const TAB_BAR_PX = 56;
 export function MobileChrome() {
   const view = useSiteStore((state) => state.view);
   const navigate = useSiteStore((state) => state.navigate);
-  const inSection = view !== "overview";
+  const blackHole = useSiteStore((state) => state.blackHole !== "off");
+  const showBack = view !== "overview" || blackHole;
 
   return (
     <>
@@ -29,9 +30,9 @@ export function MobileChrome() {
           type="button"
           onClick={() => navigate("overview")}
           aria-label="Back to the solar system"
-          tabIndex={inSection ? 0 : -1}
+          tabIndex={showBack ? 0 : -1}
           className={`mt-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/70 backdrop-blur-sm transition-opacity duration-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60 ${
-            inSection ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+            showBack ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
           }`}
         >
           <SystemGlyph />

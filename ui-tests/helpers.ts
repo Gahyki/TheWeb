@@ -3,7 +3,13 @@
 import { expect, type Page } from "@playwright/test";
 
 /** Mirror of the `window.__pose` test hook written by CameraDirector. */
-export type Pose = { azimuth: number; view: string; moving: boolean };
+export type Pose = {
+  azimuth: number;
+  view: string;
+  moving: boolean;
+  /** Brightest moon-system reveal: 0 dark, 1 fully lit. */
+  moons: number;
+};
 
 /** Mirror of the `window.__label` test hook written by PlanetCaption. */
 export type Label = {
@@ -26,6 +32,67 @@ export type Perf = {
   /** Measured display vsync period (median), in ms. */
   period: number;
 };
+
+/** Mirror of the `window.__sun` test hook written by SunGate. */
+export type Sun = {
+  /** Projected sun center and radius, in CSS pixels. */
+  x: number;
+  y: number;
+  r: number;
+  /** Click/tap radius around (x, y), in CSS pixels. */
+  hitR: number;
+  /** A click on the sun would open the black hole right now. */
+  armed: boolean;
+  phase: "idle" | "collapsing" | "collapsed" | "restoring";
+  /** How far the sun has collapsed: 0 whole, 1 gone. */
+  progress: number;
+  /** How far the planets have fallen in: 0 on their orbits, 1 swallowed. */
+  infall: number;
+  /** Earth's projected center, in CSS pixels: a sample planet for the infall. */
+  earth: { x: number; y: number };
+};
+
+export async function readSun(page: Page): Promise<Sun> {
+  const sun = await page.evaluate(() => (window as unknown as { __sun?: Sun }).__sun ?? null);
+  expect(sun, "window.__sun").not.toBeNull();
+  return sun as Sun;
+}
+
+/** Waits for the sun to reach `phase` with the camera at rest. */
+export async function waitForSunPhase(page: Page, phase: Sun["phase"], timeout = 30_000) {
+  await page.waitForFunction(
+    (target) => {
+      const sun = (window as unknown as { __sun?: Sun }).__sun;
+      const pose = (window as unknown as { __pose?: Pose }).__pose;
+      return sun?.phase === target && pose?.moving === false;
+    },
+    phase,
+    { timeout },
+  );
+}
+
+/** Waits until a click on the sun would open the black hole. */
+export async function waitForArmedSun(page: Page): Promise<Sun> {
+  await expect
+    .poll(async () => (await readSun(page)).armed, {
+      message: "sun never armed: is a reused dev server missing VITE_SUPABASE_URL?",
+      timeout: 30_000,
+    })
+    .toBe(true);
+  return readSun(page);
+}
+
+/** Clicks `dx` CSS pixels right of the armed sun's center. */
+export async function clickSun(page: Page, dx = 0) {
+  const sun = await waitForArmedSun(page);
+  await page.mouse.click(sun.x + dx, sun.y);
+}
+
+/** Taps `dx` CSS pixels right of the armed sun's center. */
+export async function tapSun(page: Page, dx = 0) {
+  const sun = await waitForArmedSun(page);
+  await page.touchscreen.tap(sun.x + dx, sun.y);
+}
 
 /** Shortest signed angular distance from one azimuth to another. */
 export function wrappedDelta(from: number, to: number): number {
@@ -141,5 +208,39 @@ export async function lightOf(
       return { lit, mean: sum / (data.length / 4) };
     },
     [png.toString("base64"), threshold, clip ?? null] as const,
+  );
+}
+
+/** Lit-pixel tolerance between two renders of the same det frame (see visual.spec). */
+export const LIT_BAND = 0.03;
+/** Luma (0–255) above which a pixel counts as lit. */
+const LIT_LUMA = 16;
+
+/** Square clip of half-size `half` around (x, y), kept inside the viewport. */
+export function around(page: Page, x: number, y: number, half: number): Clip {
+  const { width, height } = page.viewportSize() ?? { width: 1280, height: 720 };
+  const left = Math.max(0, Math.round(x - half));
+  const top = Math.max(0, Math.round(y - half));
+  return {
+    x: left,
+    y: top,
+    width: Math.min(width, Math.round(x + half)) - left,
+    height: Math.min(height, Math.round(y + half)) - top,
+  };
+}
+
+/** Lit-pixel counts of `clips`, all from one screenshot. */
+export async function litIn(page: Page, ...clips: Clip[]): Promise<number[]> {
+  const png = await page.screenshot();
+  const counts: number[] = [];
+  for (const clip of clips) {
+    counts.push((await lightOf(page, png, LIT_LUMA, clip)).lit);
+  }
+  return counts;
+}
+
+export function expectWithinBand(actual: number, expected: number, label: string) {
+  expect(Math.abs(actual / expected - 1), `${label}: ${actual} lit vs ${expected}`).toBeLessThan(
+    LIT_BAND,
   );
 }
